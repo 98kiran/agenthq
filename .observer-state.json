@@ -1,0 +1,33 @@
+{
+  "known_sessions": {
+    "agent:main:subagent:c2fbb81f-3590-48c8-9769-5d24b1fa5c06": {
+      "status": "done",
+      "agent_id": "main",
+      "tokens": 34085,
+      "updated_at": 1773721844611,
+      "task_id": "auto-c2fbb81f-359"
+    },
+    "agent:main:subagent:92c63822-c63c-4584-9be1-de445175d0a2": {
+      "status": "done",
+      "agent_id": "main",
+      "tokens": 31317,
+      "updated_at": 1773722319464,
+      "task_id": "auto-92c63822-c63"
+    },
+    "agent:main:subagent:e58e2150-199e-416e-957b-09580a6abefd": {
+      "status": "done",
+      "agent_id": "main",
+      "tokens": 25533,
+      "updated_at": 1773722729900,
+      "task_id": "auto-e58e2150-199"
+    },
+    "agent:samdev:subagent:b8b74403-2f30-436d-b04c-a824c50651e3": {
+      "status": "done",
+      "agent_id": "samdev",
+      "tokens": 26101,
+      "updated_at": 1773869887845,
+      "task_id": "auto-b8b74403-2f3"
+    }
+  },
+  "last_run": 1773870422213
+}
