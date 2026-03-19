@@ -292,6 +292,7 @@ export default function Tasks() {
   const [filterAgent, setFilterAgent] = useState('')
   const [filterProject, setFilterProject] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [previewTask, setPreviewTask] = useState<Task | null>(null)
 
   const load = useCallback(async () => {
     const [tasksRes, agentsRes, archivedRes] = await Promise.all([
@@ -484,76 +485,72 @@ export default function Tasks() {
                   No archived tasks
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gap: 12,
+                }}>
                   {archivedTasks.map((task, i) => {
                     const matchedAgent = agents.find(a => a.id === task.agent)
                     const agentName = matchedAgent?.display_name || task.agent || '—'
                     const agentEmoji = matchedAgent?.emoji || '🤖'
                     const agentColor = matchedAgent?.color || getAgentColor(task.agent)
-                    const completedDate = task.completed_at
-                      ? new Date(task.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    const assignedDate = task.assigned_at
+                      ? new Date(task.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
                       : null
                     return (
                       <motion.div
                         key={task.id}
                         layout
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }}
-                        exit={{ opacity: 0, y: 8 }}
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1, transition: { delay: i * 0.04 } }}
+                        exit={{ opacity: 0, scale: 0.92 }}
+                        whileHover={{ scale: 1.02, borderColor: 'var(--accent)' }}
+                        transition={{ duration: 0.15 }}
+                        onClick={() => setPreviewTask(task)}
                         style={{
                           background: 'var(--surface)',
                           border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          padding: '12px 16px',
+                          borderRadius: 10,
+                          borderTop: `4px solid ${agentColor}`,
+                          padding: 14,
+                          minHeight: 160,
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: 14,
-                          position: 'relative',
+                          flexDirection: 'column',
+                          cursor: 'pointer',
                           overflow: 'hidden',
+                          transition: 'transform 0.15s, border-color 0.15s',
                         }}
                       >
-                        {/* Agent color bar */}
-                        <div style={{
-                          position: 'absolute', left: 0, top: 0, bottom: 0,
-                          width: 4, background: agentColor, borderRadius: '8px 0 0 8px',
-                          flexShrink: 0,
-                        }} />
-                        <div style={{ paddingLeft: 6, flex: 1, minWidth: 0 }}>
-                          {/* Title */}
+                        {/* Project name */}
+                        {task.project && (
                           <div style={{
-                            fontSize: 13, fontWeight: 600, color: 'var(--text-primary)',
-                            marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            fontSize: 12, fontWeight: 700, color: 'var(--text-primary)',
+                            marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                           }}>
-                            {task.project ? <><span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{task.project} —</span> </> : ''}{task.description}
+                            {task.project}
                           </div>
-                          {/* Meta row */}
-                          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span>{agentEmoji}</span>
-                              <span style={{ color: agentColor, fontWeight: 600 }}>{agentName}</span>
-                            </span>
-                            {completedDate && (
-                              <span suppressHydrationWarning style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Clock size={10} /> {completedDate}
-                              </span>
-                            )}
-                          </div>
+                        )}
+                        {/* Description */}
+                        <div style={{
+                          fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.45, flex: 1,
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {task.description}
                         </div>
-                        <button
-                          onClick={() => unarchive(task.id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 5,
-                            fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6,
-                            background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                            border: '1px solid var(--border)', color: 'var(--text-muted)',
-                            transition: 'color 0.15s, border-color 0.15s',
-                            flexShrink: 0,
-                          }}
-                          onMouseOver={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
-                          onMouseOut={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-                        >
-                          <ArchiveRestore size={12} /> Unarchive
-                        </button>
+                        {/* Bottom: agent + date */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 6 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: agentColor, fontWeight: 600, minWidth: 0 }}>
+                            <span style={{ flexShrink: 0 }}>{agentEmoji}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agentName}</span>
+                          </span>
+                          {assignedDate && (
+                            <span suppressHydrationWarning style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
+                              {assignedDate}
+                            </span>
+                          )}
+                        </div>
                       </motion.div>
                     )
                   })}
@@ -561,6 +558,70 @@ export default function Tasks() {
               )}
             </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Archive preview modal */}
+        <AnimatePresence>
+          {previewTask && (() => {
+            const matchedAgent = agents.find(a => a.id === previewTask.agent)
+            const agentName = matchedAgent?.display_name || previewTask.agent || '—'
+            const agentEmoji = matchedAgent?.emoji || '🤖'
+            const agentColor = matchedAgent?.color || getAgentColor(previewTask.agent)
+            return (
+              <motion.div
+                key="archive-preview-overlay"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setPreviewTask(null)}
+                style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                  zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backdropFilter: 'blur(4px)',
+                }}
+              >
+                <motion.div
+                  key="archive-preview-card"
+                  initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+                  onClick={e => e.stopPropagation()}
+                  className="card"
+                  style={{ width: 400, maxWidth: '90vw', borderRadius: 14, padding: 24, borderTop: `4px solid ${agentColor}` }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Archived Task</span>
+                    <button onClick={() => setPreviewTask(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', lineHeight: 0 }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                  {previewTask.project && (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>{previewTask.project}</div>
+                  )}
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: 14 }}>{previewTask.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 2 }}>
+                    {previewTask.phase && <div>Phase: {previewTask.phase}</div>}
+                    {previewTask.priority && <div>Priority: {previewTask.priority}</div>}
+                    {previewTask.assigned_at && <div suppressHydrationWarning>Assigned: {new Date(previewTask.assigned_at).toLocaleString()}</div>}
+                    {previewTask.completed_at && <div suppressHydrationWarning>Completed: {new Date(previewTask.completed_at).toLocaleString()}</div>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13 }}>{agentEmoji}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: agentColor }}>{agentName}</span>
+                    <button
+                      onClick={() => { unarchive(previewTask.id); setPreviewTask(null) }}
+                      style={{
+                        marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5,
+                        fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 7,
+                        background: 'none', cursor: 'pointer',
+                        border: '1px solid var(--border)', color: 'var(--text-muted)',
+                      }}
+                      onMouseOver={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+                      onMouseOut={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                    >
+                      <ArchiveRestore size={12} /> Unarchive
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )
+          })()}
         </AnimatePresence>
       </div>
 
