@@ -1,5 +1,6 @@
--- AgentHQ Supabase Schema
--- Run this in your Supabase SQL Editor (https://supabase.com/dashboard → SQL Editor)
+-- AgentHQ Database Schema
+-- For Supabase: Run this in SQL Editor (https://supabase.com/dashboard -> SQL Editor)
+-- For SQLite: Applied automatically by setup.sh
 
 CREATE TABLE IF NOT EXISTS agent_config (
   id TEXT PRIMARY KEY,
@@ -10,13 +11,17 @@ CREATE TABLE IF NOT EXISTS agent_config (
   emoji TEXT DEFAULT '🤖',
   color TEXT DEFAULT '#8c8c9a',
   last_active TIMESTAMPTZ,
-  session_key TEXT
+  session_key TEXT,
+  session_count INTEGER DEFAULT 0,
+  metadata JSONB,
+  updated_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   description TEXT NOT NULL,
   project TEXT,
+  phase TEXT DEFAULT 'general',
   agent TEXT,
   priority TEXT DEFAULT 'medium',
   status TEXT DEFAULT 'todo',
@@ -43,12 +48,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_timeline_ts ON timeline_events(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_timeline_agent ON timeline_events(agent);
 
--- Enable RLS (optional but recommended)
-ALTER TABLE agent_config ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE timeline_events ENABLE ROW LEVEL SECURITY;
-
--- Allow service role full access
-CREATE POLICY "service_role_all" ON agent_config FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "service_role_all" ON tasks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "service_role_all" ON timeline_events FOR ALL USING (true) WITH CHECK (true);
+-- Supabase only: Enable RLS (optional but recommended)
+-- ALTER TABLE agent_config ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE timeline_events ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "service_role_all" ON agent_config FOR ALL USING (true) WITH CHECK (true);
+-- CREATE POLICY "service_role_all" ON tasks FOR ALL USING (true) WITH CHECK (true);
+-- CREATE POLICY "service_role_all" ON timeline_events FOR ALL USING (true) WITH CHECK (true);

@@ -179,12 +179,16 @@ class SQLiteDB implements DB {
         emoji TEXT DEFAULT '🤖',
         color TEXT DEFAULT '#8c8c9a',
         last_active TEXT,
-        session_key TEXT
+        session_key TEXT,
+        session_count INTEGER DEFAULT 0,
+        metadata TEXT,
+        updated_at TEXT
       );
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         description TEXT NOT NULL,
         project TEXT,
+        phase TEXT DEFAULT 'general',
         agent TEXT,
         priority TEXT DEFAULT 'medium',
         status TEXT DEFAULT 'todo',
