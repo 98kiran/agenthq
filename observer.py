@@ -386,11 +386,12 @@ def observe():
                 if result is not None:
                     new_tasks += 1
                     # Timeline event for new spawn
+                    display_name = agent_id.title() if agent_id != "main" else "Main Agent"
                     db_insert("timeline_events", {
                         "agent": agent_id,
-                        "event_type": "spawn",
-                        "title": f"Agent {agent_id} spawned (auto-detected)",
-                        "description": f"Model: {model}, Session: {session_id[:8]}",
+                        "event_type": "assignment",
+                        "title": f"Started: {description}",
+                        "description": f"Assigned to {display_name}",
                         "timestamp": datetime.fromtimestamp(updated_at / 1000, tz=timezone.utc).isoformat(),
                     })
                     timeline_events += 1
@@ -411,11 +412,11 @@ def observe():
             
             # Timeline event for completion
             if current_status == "done":
+                task_label = known.get(key, {}).get("task_id", task_id).replace("auto-", "").replace("-", " ").replace("_", " ").title()
                 db_insert("timeline_events", {
                     "agent": agent_id,
-                    "event_type": "completion",
-                    "title": f"Agent {agent_id} task completed (auto-detected)",
-                    "description": f"Tokens used: {tokens}",
+                    "event_type": "task_complete",
+                    "title": f"Task complete: {task_label}",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
                 timeline_events += 1
@@ -480,6 +481,30 @@ def observe():
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
             agents_updated += 1
+            
+            # Only log meaningful status transitions to timeline (not every bounce)
+            prev_status_val = prev_agent.get("status", "offline")
+            if status_changed and prev_status_val != status:
+                # Only log: offline -> online (came online), online/idle -> offline (went offline)
+                if prev_status_val == "offline" and status == "online":
+                    display_name = agent_id.title() if agent_id != "main" else "Main Agent"
+                    db_insert("timeline_events", {
+                        "agent": agent_id,
+                        "event_type": "system",
+                        "title": f"{display_name} came online",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                    timeline_events += 1
+                elif prev_status_val in ("online", "idle") and status == "offline":
+                    display_name = agent_id.title() if agent_id != "main" else "Main Agent"
+                    db_insert("timeline_events", {
+                        "agent": agent_id,
+                        "event_type": "system",
+                        "title": f"{display_name} went offline",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                    timeline_events += 1
+        
         known[f"agent:{agent_id}"] = {"status": status, "session_count": agent_session_counts.get(agent_id, 0), "last_active_ms": last_active_ms}
     
     # Save state

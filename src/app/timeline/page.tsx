@@ -484,7 +484,7 @@ export default function TimelinePage() {
           </AnimatePresence>
         </div>
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-          Agent activity and events — powered by Supabase
+          Agent activity and events
         </p>
 
         {/* Agent filter pills + refresh */}
