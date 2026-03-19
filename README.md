@@ -16,22 +16,15 @@ A lightweight ops dashboard for OpenClaw agent teams. See who's online, what the
 git clone https://github.com/98kiran/agenthq.git
 cd agenthq
 
-# Install
-npm install
-
-# Setup (choose one)
-bash setup.sh supabase <your-url> <your-service-key>
-# OR
+# Setup (picks database, installs deps, builds)
 bash setup.sh sqlite
+# OR: bash setup.sh supabase <your-url> <your-service-key>
 
-# Build & run
-npm run build
+# Run
 npx pm2 start npm --name agenthq -- start
 ```
 
-Then visit `http://localhost:3000` (or your configured port).
-
-Default password: `changeme` (update in `.env.local`)
+Setup prints your login URL and generated password.
 
 ## Database Options
 
