@@ -62,6 +62,21 @@ echo "Building..."
 npm run build 2>&1 | tail -5
 
 AUTH_PW=$(grep AUTH_PASSWORD .env.local | cut -d= -f2)
+
+# Set up observer cron (every 30s)
+echo "Setting up observer cron..."
+(crontab -l 2>/dev/null | grep -v "observer.py"; \
+  echo "* * * * * cd $AGENTHQ_DIR && python3 observer.py >> observer.log 2>&1"; \
+  echo "* * * * * sleep 30 && cd $AGENTHQ_DIR && python3 observer.py >> observer.log 2>&1") | crontab -
+echo "Observer cron installed (every 30s)."
+
+# Set up dispatcher (Supabase mode only)
+if [ "$MODE" = "supabase" ]; then
+  echo "Dispatcher available (Supabase mode)."
+  echo "  Start: npx pm2 start python3 --name agenthq-dispatcher -- dispatcher.py"
+  echo "  Env vars needed: SUPABASE_URL, SUPABASE_KEY, GATEWAY_URL (optional)"
+fi
+
 echo ""
 echo "==============================="
 echo " AgentHQ setup complete!"
@@ -70,6 +85,11 @@ echo ""
 echo " Start:    npx pm2 start npm --name agenthq -- start"
 echo " URL:      http://localhost:3000"
 echo " Password: $AUTH_PW"
+echo ""
+echo " Observer: running every 30s (cron)"
+if [ "$MODE" = "supabase" ]; then
+echo " Dispatcher: npx pm2 start python3 --name agenthq-dispatcher -- dispatcher.py"
+fi
 echo ""
 echo " To change password: edit AUTH_PASSWORD in .env.local"
 echo ""
