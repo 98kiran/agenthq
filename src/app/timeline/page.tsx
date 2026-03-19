@@ -457,14 +457,14 @@ export default function TimelinePage() {
     >
       {/* Sticky header: title + agent filter pills */}
       <div
-        className="sticky top-0 z-20 px-8 pt-8 pb-6"
+        className="sticky top-0 z-20 px-3 sm:px-6 pt-5 pb-4"
         style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}
       >
         {/* Title row */}
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5" style={{ color: "var(--accent)" }} />
-            <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
               Timeline
             </h1>
           </div>
@@ -483,12 +483,12 @@ export default function TimelinePage() {
             )}
           </AnimatePresence>
         </div>
-        <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
+        <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
           Agent activity and events
         </p>
 
         {/* Agent filter pills + refresh */}
-        <div className="flex flex-nowrap sm:flex-wrap items-center gap-2.5 overflow-x-auto pb-1">
+        <div className="flex flex-nowrap sm:flex-wrap items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         <button
           onClick={() =>
             setSelected(allSelected ? new Set() : new Set(agents.map((a) => a.id)))
@@ -520,7 +520,7 @@ export default function TimelinePage() {
       </div>{/* end sticky header */}
 
       {/* Thread */}
-      <div className="px-8 pt-8 pb-8">
+      <div className="px-3 sm:px-6 pt-5 pb-5">
       {loading && events.length === 0 && (
         <div className="flex justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} />
