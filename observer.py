@@ -430,53 +430,6 @@ def observe():
             "task_id": task_id,
         }
     
-    # ── Track activity from persistent sessions (main, discord, telegram) ──
-    for sess in sessions:
-        key = sess.get("_key", "")
-        if ":subagent:" in key:
-            continue  # already handled above
-        
-        agent_id = sess.get("_agent_id", "")
-        tokens = sess.get("totalTokens", 0)
-        output_tokens = sess.get("outputTokens", 0)
-        updated_at = sess.get("updatedAt", 0)
-        
-        if not agent_id or tokens == 0:
-            continue
-        
-        prev = known.get(key, {})
-        prev_tokens = prev.get("tokens", 0)
-        token_delta = tokens - prev_tokens
-        
-        # Log activity when new tokens detected (>200 = a real reply, not just a heartbeat)
-        # Skip first observation (prev_tokens == 0 means we haven't seen this session before)
-        if token_delta > 200 and prev_tokens > 0:
-            display_name = agent_id.title() if agent_id != "main" else "Main Agent"
-            # Determine session type from key
-            if ":discord:" in key:
-                session_type = "Discord"
-            elif ":telegram:" in key:
-                session_type = "Telegram"
-            else:
-                session_type = "main"
-            
-            db_insert("timeline_events", {
-                "agent": agent_id,
-                "event_type": "session",
-                "title": f"{display_name} active ({session_type})",
-                "description": f"+{token_delta:,} tokens",
-                "timestamp": datetime.fromtimestamp(updated_at / 1000, tz=timezone.utc).isoformat(),
-            })
-            timeline_events += 1
-        
-        # Always update known state for persistent sessions
-        known[key] = {
-            "status": "active",
-            "agent_id": agent_id,
-            "tokens": tokens,
-            "updated_at": updated_at,
-        }
-    
     # ── Update agent_config health ──────────────────────
     agent_last_active = {}
     agent_session_counts = {}
