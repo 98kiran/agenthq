@@ -503,28 +503,9 @@ def observe():
             })
             agents_updated += 1
             
-            # Only log meaningful status transitions to timeline (not every bounce)
-            prev_status_val = prev_agent.get("status", "offline")
-            if status_changed and prev_status_val != status:
-                # Only log: offline -> online (came online), online/idle -> offline (went offline)
-                if prev_status_val == "offline" and status == "online":
-                    display_name = agent_id.title() if agent_id != "main" else "Main Agent"
-                    db_insert("timeline_events", {
-                        "agent": agent_id,
-                        "event_type": "system",
-                        "title": f"{display_name} came online",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-                    timeline_events += 1
-                elif prev_status_val in ("online", "idle") and status == "offline":
-                    display_name = agent_id.title() if agent_id != "main" else "Main Agent"
-                    db_insert("timeline_events", {
-                        "agent": agent_id,
-                        "event_type": "system",
-                        "title": f"{display_name} went offline",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-                    timeline_events += 1
+            # Status transitions (online/offline) are shown on the dashboard via
+            # live agent dots. No need to log them to the timeline -- it's noise.
+            # Timeline should only contain actionable events (tasks, fixes, deploys).
         
         known[f"agent:{agent_id}"] = {"status": status, "session_count": agent_session_counts.get(agent_id, 0), "last_active_ms": last_active_ms}
     
