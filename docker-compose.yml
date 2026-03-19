@@ -1,0 +1,14 @@
+services:
+  agenthq:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_MODE=sqlite
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-changeme}
+      - AUTH_SECRET=${AUTH_SECRET:-please-change-this-secret}
+    volumes:
+      - agenthq-data:/app/data
+
+volumes:
+  agenthq-data:

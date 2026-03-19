@@ -1,54 +1,12 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { LayoutDashboard, Users, FolderKanban, GitBranch, Activity, Zap, CheckCircle2, Clock } from 'lucide-react'
+import { Users, FolderKanban, GitBranch, CheckCircle2, Clock } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { getAgentColor, getStatusColor, getStatusLabel, relativeTime } from '@/lib/constants'
-
-interface Agent {
-  id: string
-  display_name: string
-  role: string
-  model: string
-  status: string
-  last_active: string | null
-  session_count: number | null
-  metadata: Record<string, unknown> | null
-  updated_at: string | null
-}
-
-interface Task {
-  id: string
-  description: string
-  status: string
-  project: string
-  agent: string
-  updated_at: string
-  assigned_at: string | null
-}
-
-interface TimelineEvent {
-  id: string
-  agent: string
-  timestamp: number
-  title: string
-  type: string
-}
-
-function StatusDot({ status, lastActive }: { status: string; lastActive: string | null }) {
-  const color = getStatusColor(status, lastActive)
-  const isOnline = status === 'active' || status === 'online'
-  return (
-    <span className="relative inline-flex" style={{ width: 10, height: 10 }}>
-      {isOnline && (
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
-          style={{ background: color }} />
-      )}
-      <span className="relative inline-flex rounded-full"
-        style={{ width: 10, height: 10, background: color, boxShadow: isOnline ? `0 0 8px ${color}90` : 'none' }} />
-    </span>
-  )
-}
+import { fetchAgents, fetchTasks, fetchTimeline, type Agent, type Task, type TimelineEvent } from '@/lib/api'
+import { StatusDot } from '@/components/StatusDot'
 
 function StatCardSkeleton() {
   return (
@@ -211,39 +169,34 @@ function RecentEventRow({ event }: { event: TimelineEvent }) {
 }
 
 export default function Dashboard() {
-  const [agents, setAgents] = useState<Agent[]>([])
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [events, setEvents] = useState<TimelineEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [greeting, setGreeting] = useState('')
-  const [dateStr, setDateStr] = useState('')
+  const { data: agents = [], isLoading: agentsLoading } = useQuery({
+    queryKey: ['agents'],
+    queryFn: fetchAgents,
+    refetchInterval: 15_000,
+  })
 
-  useEffect(() => {
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: fetchTasks,
+    refetchInterval: 30_000,
+  })
+
+  const { data: timelineData, isLoading: eventsLoading } = useQuery({
+    queryKey: ['timeline', 10],
+    queryFn: () => fetchTimeline(10),
+    refetchInterval: 30_000,
+  })
+
+  const events = timelineData?.events ?? []
+  const loading = agentsLoading || tasksLoading || eventsLoading
+
+  const greeting = useMemo(() => {
     const h = new Date().getHours()
-    setGreeting(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
-    setDateStr(new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))
+    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
   }, [])
 
-  const load = () => {
-    Promise.allSettled([
-      fetch('/api/agents').then(r => r.json()),
-      fetch('/api/tasks').then(r => r.json()),
-      fetch('/api/timeline?limit=10').then(r => r.json()),
-    ]).then(([ag, tk, ev]) => {
-      if (ag.status === 'fulfilled' && Array.isArray(ag.value)) setAgents(ag.value)
-      if (tk.status === 'fulfilled' && Array.isArray(tk.value)) setTasks(tk.value)
-      if (ev.status === 'fulfilled') {
-        const data = ev.value
-        setEvents(Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [])
-      }
-      setLoading(false)
-    })
-  }
-
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 30000)
-    return () => clearInterval(t)
+  const dateStr = useMemo(() => {
+    return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
   }, [])
 
   const inProgress = tasks.filter(t => t.status === 'in-progress')
