@@ -1,3 +1,4 @@
+// AgentHQ constants - auto-generated colors and helpers
 // Auto-generated color palette for agents without custom colors
 const PALETTE = [
   '#7c3aed', '#2563eb', '#dc2626', '#0ea5e9', '#14b8a6',
