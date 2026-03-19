@@ -266,7 +266,7 @@ export default function Dashboard() {
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}
               suppressHydrationWarning>
-              {greeting ? `${greeting}, Kiran 👋` : 'Dashboard'}
+              {greeting ? `${greeting} 👋` : 'Dashboard'}
             </h1>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}
               suppressHydrationWarning>{dateStr || '\u00a0'}</p>
