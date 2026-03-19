@@ -25,7 +25,7 @@ cat > .env.local << EOF
 DB_MODE=$MODE
 
 # Auth
-AUTH_PASSWORD=changeme
+AUTH_PASSWORD=$(openssl rand -hex 8 2>/dev/null || head -c 16 /dev/urandom | xxd -p)
 AUTH_SECRET=$AUTH_SECRET
 EOF
 
@@ -55,13 +55,21 @@ fi
 
 # Install dependencies
 echo "Installing dependencies..."
-npm install --production 2>&1 | tail -3
+npm install 2>&1 | tail -3
 
 # Build
 echo "Building..."
 npm run build 2>&1 | tail -5
 
+AUTH_PW=$(grep AUTH_PASSWORD .env.local | cut -d= -f2)
 echo ""
-echo "Setup complete!"
-echo "Start with: npx pm2 start npm --name agenthq -- start"
-echo "Default password: changeme (change in .env.local)"
+echo "==============================="
+echo " AgentHQ setup complete!"
+echo "==============================="
+echo ""
+echo " Start:    npx pm2 start npm --name agenthq -- start"
+echo " URL:      http://localhost:3000"
+echo " Password: $AUTH_PW"
+echo ""
+echo " To change password: edit AUTH_PASSWORD in .env.local"
+echo ""

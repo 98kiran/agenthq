@@ -389,11 +389,12 @@ def observe():
                     new_tasks += 1
                     # Timeline event for new spawn
                     display_name = agent_id.title() if agent_id != "main" else "Main Agent"
+                    # Use label for title (short), fall back to truncated description
+                    short_title = label.replace("-", " ").replace("_", " ").title() if label else description[:80]
                     db_insert("timeline_events", {
                         "agent": agent_id,
                         "event_type": "assignment",
-                        "title": f"Started: {description}",
-                        "description": f"Assigned to {display_name}",
+                        "title": f"Started: {short_title}",
                         "timestamp": datetime.fromtimestamp(updated_at / 1000, tz=timezone.utc).isoformat(),
                     })
                     timeline_events += 1
