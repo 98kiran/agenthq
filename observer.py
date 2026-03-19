@@ -343,10 +343,12 @@ def observe():
         prev_status = prev_state.get("status", "unknown")
         
         # Determine current status
+        # "review" = agent finished, needs build/deploy verification
+        # "done" = only set manually by Nova after review + deploy
         if session_is_complete(sess):
-            current_status = "done"
+            current_status = "review"
         elif session_is_active(sess):
-            current_status = "done"
+            current_status = "in-progress"
         else:
             current_status = "in-progress"
         
@@ -404,19 +406,19 @@ def observe():
                 "status": current_status,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
-            if current_status == "done":
+            if current_status == "review":
                 patch_data["completed_at"] = datetime.now(timezone.utc).isoformat()
             
             db_update("tasks", "id", task_id, patch_data)
             updated_tasks += 1
             
-            # Timeline event for completion
-            if current_status == "done":
+            # Timeline event for review-ready
+            if current_status == "review":
                 task_label = known.get(key, {}).get("task_id", task_id).replace("auto-", "").replace("-", " ").replace("_", " ").title()
                 db_insert("timeline_events", {
                     "agent": agent_id,
-                    "event_type": "task_complete",
-                    "title": f"Task complete: {task_label}",
+                    "event_type": "review",
+                    "title": f"Ready for review: {task_label}",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
                 timeline_events += 1
