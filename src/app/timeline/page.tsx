@@ -377,10 +377,11 @@ export default function TimelinePage() {
         setAgents((prev) => (sameAgents(prev, nextAgents) ? prev : nextAgents));
         setSelected((prev) => {
           const validIds = new Set<string>(nextAgents.map((a: AgentInfo) => a.id));
-          // First load: select all agents
+          // First load: select all agents except "system"
           if (isFirstLoad.current || prev.size === 0) {
             isFirstLoad.current = false;
-            return new Set<string>(validIds);
+            const withoutSystem = new Set<string>(Array.from(validIds).filter(id => id !== 'system'));
+            return withoutSystem.size > 0 ? withoutSystem : new Set<string>(validIds);
           }
           const next = new Set<string>(Array.from(prev).filter((id) => validIds.has(id)));
           if (next.size === 0) return new Set<string>(validIds);
