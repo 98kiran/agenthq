@@ -79,7 +79,7 @@ export default function Sidebar({ onLogout }: { onLogout?: () => void }) {
           </div>
           <div>
             <p style={{ fontSize: 14, fontWeight: 600, lineHeight: 1, color: 'var(--text-primary)' }}>AgentHQ</p>
-            <p style={{ fontSize: 10, marginTop: 2, color: 'var(--text-muted)' }}>Agent HQ</p>
+            <p style={{ fontSize: 10, marginTop: 2, color: 'var(--text-muted)' }}>Operations</p>
           </div>
         </div>
       </div>

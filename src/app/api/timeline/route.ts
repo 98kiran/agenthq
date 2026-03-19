@@ -36,9 +36,12 @@ export async function GET(req: NextRequest) {
       agentList.push({ id: 'system', label: 'System', emoji: '🤖', color: '#8c8c9a' })
     }
 
+    // Normalize agent IDs: 'nova' -> 'main' (Nova's DB id is 'main')
+    const normalizeAgent = (a: string) => a === 'nova' ? 'main' : (a || 'system')
+
     const events = (data || []).map((e: any) => ({
       id: e.id,
-      agent: e.agent || 'system',
+      agent: normalizeAgent(e.agent),
       timestamp: new Date(e.timestamp).getTime(),
       title: e.title || '',
       description: e.description || '',

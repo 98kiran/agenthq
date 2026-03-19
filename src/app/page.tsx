@@ -64,9 +64,10 @@ function AgentCardSkeleton() {
 }
 
 function AgentCard({ agent, recentTask, delay }: { agent: Agent; recentTask?: Task | null; delay: number }) {
-  const color = getAgentColor(agent.id)
+  const color = agent.color || getAgentColor(agent.id)
   const statusColor = getStatusColor(agent.status, agent.last_active)
   const statusLabel = getStatusLabel(agent.status, agent.last_active)
+  const emoji = agent.emoji && agent.emoji !== '🤖' ? agent.emoji : null
   const initials = (agent.display_name || agent.id).slice(0, 2).toUpperCase()
 
   return (
@@ -78,8 +79,8 @@ function AgentCard({ agent, recentTask, delay }: { agent: Agent; recentTask?: Ta
           width: 40, height: 40, borderRadius: '50%',
           background: color + '1a', border: `2px solid ${color}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, fontSize: 14, color, flexShrink: 0,
-        }}>{initials}</div>
+          fontWeight: 700, fontSize: emoji ? 20 : 14, color, flexShrink: 0,
+        }}>{emoji || initials}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{agent.display_name}</div>
           <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 1 }}>{agent.role}</div>
@@ -133,8 +134,10 @@ function ActivityRowSkeleton() {
   )
 }
 
-function RecentEventRow({ event }: { event: TimelineEvent }) {
-  const color = getAgentColor(event.agent)
+function RecentEventRow({ event, agents }: { event: TimelineEvent; agents: Agent[] }) {
+  const matchedAgent = agents.find(a => a.id === event.agent)
+  const color = matchedAgent?.color || getAgentColor(event.agent)
+  const emoji = matchedAgent?.emoji && matchedAgent.emoji !== '🤖' ? matchedAgent.emoji : null
   const initials = (event.agent || '?').slice(0, 2).toUpperCase()
   const timeAgo = () => {
     if (!event.timestamp) return '—'
@@ -155,13 +158,13 @@ function RecentEventRow({ event }: { event: TimelineEvent }) {
         width: 24, height: 24, borderRadius: '50%',
         background: color + '1a', border: `1.5px solid ${color}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 9, fontWeight: 700, color, flexShrink: 0,
-      }}>{initials}</div>
+        fontSize: emoji ? 13 : 9, fontWeight: 700, color, flexShrink: 0,
+      }}>{emoji || initials}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>
           {event.title?.slice(0, 60)}{event.title?.length > 60 ? '…' : ''}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{event.agent}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{matchedAgent?.display_name || event.agent}</div>
       </div>
       <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>{timeAgo()}</span>
     </div>
@@ -321,7 +324,7 @@ export default function Dashboard() {
                     <p>No recent activity</p>
                   </div>
                 ) : (
-                  events.slice(0, 8).map(ev => <RecentEventRow key={ev.id} event={ev} />)
+                  events.slice(0, 8).map(ev => <RecentEventRow key={ev.id} event={ev} agents={agents} />)
                 )}
             </div>
           </div>

@@ -12,16 +12,16 @@ interface GatewaySession {
   key: string
   model: string
   modelProvider: string
-  totalTokens: number
-  inputTokens: number
-  outputTokens: number
-  totalTokensFresh: boolean
+  totalTokens?: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokensFresh?: boolean
   updatedAt: number
-  displayName: string
-  kind: string
-  channel: string
-  sessionId: string
-  contextTokens: number
+  displayName?: string
+  kind?: string
+  channel?: string
+  sessionId?: string
+  contextTokens?: number
 }
 
 interface SessionsListResult {
@@ -140,27 +140,36 @@ export async function getLiveAgents(): Promise<LiveAgent[]> {
   const result = await getLiveSessions()
   if (!result) return []
 
-  // Group sessions by agent
+  // Group sessions by agent, merging 'nova' into 'main'
   const agentMap = new Map<string, GatewaySession[]>()
   for (const s of result.sessions) {
     const parts = s.key.split(':')
-    const agentId = parts[1] || parts[0]
+    let agentId = parts[1] || parts[0]
+    // 'agent:main:*' and 'agent:nova:*' are both Nova (main agent)
+    if (agentId === 'nova') agentId = 'main'
     if (!agentMap.has(agentId)) agentMap.set(agentId, [])
     agentMap.get(agentId)!.push(s)
   }
 
   const agents: LiveAgent[] = []
   for (const [id, sessions] of agentMap) {
-    // Pick the most recently active session
+    // Pick the most recently active session for status
     const sorted = sessions.sort((a, b) => b.updatedAt - a.updatedAt)
     const primary = sorted[0]
-    const totalTokens = sessions.reduce((sum, s) => sum + s.totalTokens, 0)
+    const totalTokens = sessions.reduce((sum, s) => sum + (s.totalTokens || 0), 0)
+
+    // For model: prefer the primary persistent session (telegram/discord/main), not cron sessions
+    const persistentSession = sessions.find(s =>
+      s.key.includes(':telegram:') || s.key.includes(':discord:') ||
+      (s.key.endsWith(':main') && !s.key.includes(':cron:'))
+    )
+    const modelSession = persistentSession || primary
 
     agents.push({
-      id: id === 'nova' ? 'main' : id,
+      id,
       display_name: primary.displayName || id,
-      model: primary.model,
-      model_provider: primary.modelProvider,
+      model: modelSession.model,
+      model_provider: modelSession.modelProvider,
       status: deriveAgentStatus(primary),
       total_tokens: totalTokens,
       last_active: new Date(primary.updatedAt).toISOString(),
