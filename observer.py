@@ -448,9 +448,9 @@ def observe():
         prev_tokens = prev.get("tokens", 0)
         token_delta = tokens - prev_tokens
         
-        # Log activity when meaningful new tokens (>500 = real work, not just a ping)
+        # Log activity when new tokens detected (>200 = a real reply, not just a heartbeat)
         # Skip first observation (prev_tokens == 0 means we haven't seen this session before)
-        if token_delta > 500 and prev_tokens > 0:
+        if token_delta > 200 and prev_tokens > 0:
             display_name = agent_id.title() if agent_id != "main" else "Main Agent"
             # Determine session type from key
             if ":discord:" in key:
