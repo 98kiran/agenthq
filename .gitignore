@@ -6,3 +6,4 @@ data/
 observer.log
 *.db
 __pycache__/
+tsconfig.tsbuildinfo

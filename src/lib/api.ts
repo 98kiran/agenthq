@@ -47,9 +47,14 @@ export interface Task {
   status: string
   project: string
   agent: string
+  phase: string
+  priority: string
   updated_at: string
   assigned_at: string | null
   completed_at: string | null
+  retries: number | null
+  timeout_minutes: number | null
+  metadata: Record<string, unknown> | null
 }
 
 export interface TimelineEvent {

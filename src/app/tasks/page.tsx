@@ -2,25 +2,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, RotateCw, ChevronRight, X, Plus, FolderKanban, Archive, ArchiveRestore } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentColor, PRIORITY_COLORS, relativeTime } from '@/lib/constants'
-
-interface Task {
-  id: string
-  project: string
-  phase: string
-  agent: string
-  description: string
-  status: string
-  priority: string
-  assigned_at: string | null
-  updated_at: string | null
-  completed_at: string | null
-  retries: number | null
-  timeout_minutes: number | null
-  metadata: Record<string, unknown> | null
-}
-
-interface Agent { id: string; display_name: string; emoji?: string; color?: string }
+import { fetchAgents, fetchTasks, type Task, type Agent } from '@/lib/api'
 
 const COLUMNS = [
   { key: 'todo',        label: 'Todo',        color: '#3b82f6' },
@@ -45,7 +29,7 @@ function SkeletonCard() {
   )
 }
 
-interface AgentFull { id: string; display_name: string; emoji?: string; color?: string }
+type AgentFull = Agent
 
 function TaskCard({ task, onStatusChange, onArchive, agents }: {
   task: Task
@@ -284,64 +268,64 @@ function AddTaskModal({ agents, onClose, onAdd }: {
 }
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [archivedTasks, setArchivedTasks] = useState<Task[]>([])
-  const [agents, setAgents] = useState<Agent[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ['tasks'],
+    queryFn: fetchTasks,
+    refetchInterval: 15_000,
+  })
+
+  const { data: allTasks = [] } = useQuery<Task[]>({
+    queryKey: ['tasks', 'archived'],
+    queryFn: () => fetch('/api/tasks?include_archived=true').then(r => r.json()),
+    refetchInterval: 30_000,
+  })
+
+  const archivedTasks = allTasks.filter(t => t.status === 'archived')
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: fetchAgents,
+    refetchInterval: 30_000,
+  })
+
+  const loading = tasksLoading
   const [showModal, setShowModal] = useState(false)
   const [filterAgent, setFilterAgent] = useState('')
   const [filterProject, setFilterProject] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [previewTask, setPreviewTask] = useState<Task | null>(null)
 
-  const load = useCallback(async () => {
-    const [tasksRes, agentsRes, archivedRes] = await Promise.all([
-      fetch('/api/tasks'),
-      fetch('/api/agents'),
-      fetch('/api/tasks?include_archived=true'),
-    ])
-    const [tasksData, agentsData, allTasksData] = await Promise.all([tasksRes.json(), agentsRes.json(), archivedRes.json()])
-    if (Array.isArray(tasksData)) setTasks(tasksData)
-    if (Array.isArray(agentsData)) setAgents(agentsData)
-    if (Array.isArray(allTasksData)) setArchivedTasks(allTasksData.filter((t: Task) => t.status === 'archived'))
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 15000)
-    return () => clearInterval(t)
-  }, [load])
+  const invalidateTasks = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  }
 
   const updateStatus = async (id: string, status: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t))
     await fetch('/api/tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status }),
     })
+    invalidateTasks()
   }
 
   const archive = async (id: string) => {
-    const task = tasks.find(t => t.id === id)
-    setTasks(prev => prev.filter(t => t.id !== id))
-    if (task) setArchivedTasks(prev => [{ ...task, status: 'archived' }, ...prev])
     await fetch('/api/tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'archived' }),
     })
+    invalidateTasks()
   }
 
   const unarchive = async (id: string) => {
-    const task = archivedTasks.find(t => t.id === id)
-    setArchivedTasks(prev => prev.filter(t => t.id !== id))
-    if (task) setTasks(prev => [{ ...task, status: 'done' }, ...prev])
     await fetch('/api/tasks', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'done' }),
     })
+    invalidateTasks()
   }
 
   const projects = Array.from(new Set(tasks.map(t => t.project).filter(Boolean)))
@@ -451,7 +435,7 @@ export default function Tasks() {
             <AddTaskModal
               agents={agents}
               onClose={() => setShowModal(false)}
-              onAdd={task => setTasks(prev => [task, ...prev])}
+              onAdd={() => invalidateTasks()}
             />
           )}
         </AnimatePresence>
