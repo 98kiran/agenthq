@@ -447,7 +447,25 @@ def observe():
     for agent_id, last_active_ms in agent_last_active.items():
         age_ms = int(time.time() * 1000) - last_active_ms
         
-        if age_ms < 300_000:  # 5 min
+        # Get the most recent session for this agent to check totalTokensFresh
+        latest_sess = None
+        latest_ts = 0
+        for sess in sessions:
+            if sess.get("_agent_id") == agent_id:
+                ts = sess.get("updatedAt", 0)
+                if ts > latest_ts:
+                    latest_ts = ts
+                    latest_sess = sess
+        
+        is_fresh = latest_sess.get("totalTokensFresh", True) if latest_sess else True
+        
+        # Real status from OpenClaw session state:
+        # - Not fresh + recent = actively processing a request
+        # - Fresh + recent = online, ready/idle
+        # - Old = offline
+        if age_ms < 30_000 and not is_fresh:
+            status = "active"   # currently processing
+        elif age_ms < 300_000:  # 5 min
             status = "online"
         elif age_ms < 3_600_000:  # 1 hour
             status = "idle"

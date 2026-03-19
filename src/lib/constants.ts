@@ -39,6 +39,7 @@ export function relativeTime(dateStr: string | null | undefined): string {
 }
 
 export function getStatusColor(status: string, lastActive?: string | null): string {
+  if (status === 'active') return '#7c3aed'  // purple pulse = processing
   if (status === 'online') return '#22c55e'
   if (status === 'idle') return '#eab308'
   if (status === 'busy') return '#f97316'
@@ -46,6 +47,7 @@ export function getStatusColor(status: string, lastActive?: string | null): stri
 }
 
 export function getStatusLabel(status: string, lastActive?: string | null): string {
+  if (status === 'active') return 'Working...'
   if (status === 'online') return 'Online'
   if (status === 'idle') return 'Idle'
   if (status === 'busy') return 'Busy'
