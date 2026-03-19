@@ -4,6 +4,8 @@
 # Example: ./log-event.sh nova assignment "Assigned AgentHQ CSS fix to SamDev"
 
 AGENT="${1:?Usage: log-event.sh <agent> <type> <title> [description]}"
+# Normalize "nova" to "main" (agent_config uses "main" as Nova's ID)
+[ "$AGENT" = "nova" ] && AGENT="main"
 TYPE="${2:?Missing event type}"
 TITLE="${3:?Missing title}"
 DESC="${4:-}"

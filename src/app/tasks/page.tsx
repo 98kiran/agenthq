@@ -485,31 +485,57 @@ export default function Tasks() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {archivedTasks.map(task => {
+                  {archivedTasks.map((task, i) => {
                     const matchedAgent = agents.find(a => a.id === task.agent)
                     const agentName = matchedAgent?.display_name || task.agent || '—'
+                    const agentEmoji = matchedAgent?.emoji || '🤖'
+                    const agentColor = matchedAgent?.color || getAgentColor(task.agent)
+                    const completedDate = task.completed_at
+                      ? new Date(task.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                      : null
                     return (
                       <motion.div
                         key={task.id}
                         layout
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        className="glass"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }}
+                        exit={{ opacity: 0, y: 8 }}
                         style={{
-                          padding: '10px 14px', borderRadius: 10,
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          opacity: 0.65,
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '12px 16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 14,
+                          position: 'relative',
+                          overflow: 'hidden',
                         }}
                       >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {task.project ? `${task.project} — ` : ''}{task.description}
+                        {/* Agent color bar */}
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0, bottom: 0,
+                          width: 4, background: agentColor, borderRadius: '8px 0 0 8px',
+                          flexShrink: 0,
+                        }} />
+                        <div style={{ paddingLeft: 6, flex: 1, minWidth: 0 }}>
+                          {/* Title */}
+                          <div style={{
+                            fontSize: 13, fontWeight: 600, color: 'var(--text-primary)',
+                            marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {task.project ? <><span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{task.project} —</span> </> : ''}{task.description}
                           </div>
-                          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
-                            <span>Agent: {agentName}</span>
-                            {task.completed_at && (
-                              <span suppressHydrationWarning>Completed: {new Date(task.completed_at).toLocaleDateString()}</span>
+                          {/* Meta row */}
+                          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span>{agentEmoji}</span>
+                              <span style={{ color: agentColor, fontWeight: 600 }}>{agentName}</span>
+                            </span>
+                            {completedDate && (
+                              <span suppressHydrationWarning style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Clock size={10} /> {completedDate}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -521,6 +547,7 @@ export default function Tasks() {
                             background: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
                             border: '1px solid var(--border)', color: 'var(--text-muted)',
                             transition: 'color 0.15s, border-color 0.15s',
+                            flexShrink: 0,
                           }}
                           onMouseOver={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
                           onMouseOut={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
