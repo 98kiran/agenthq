@@ -31,9 +31,10 @@ export async function GET() {
         emoji: a.emoji && a.emoji !== '🤖' ? a.emoji : '🤖',
         display_name: a.display_name || a.id.charAt(0).toUpperCase() + a.id.slice(1),
         // Live data overrides (if gateway available)
+        // Model: prefer DB value (manually set, correct) over gateway (session store, may be wrong due to OpenClaw bug)
         ...(live ? {
           status: live.status,
-          model: live.model,
+          model: a.model || live.model,
           last_active: live.last_active,
           session_count: live.session_count,
           total_tokens: live.total_tokens,
