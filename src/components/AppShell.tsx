@@ -23,9 +23,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
-      <Sidebar onLogout={handleLogout} />
-      <div style={{ marginLeft: 220, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <main style={{ flex: 1, padding: '24px', background: 'var(--bg)' }}>
+      <div className="sidebar-layout">
+        <Sidebar onLogout={handleLogout} />
+        <main className="main-content">
           {children}
         </main>
       </div>

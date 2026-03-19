@@ -27,7 +27,7 @@ export default function TopBar() {
   return (
     <header style={{
       height: 52,
-      background: '#111118',
+      background: 'var(--surface)',
       borderBottom: '1px solid #1e1e2e',
       display: 'flex',
       alignItems: 'center',
@@ -36,7 +36,7 @@ export default function TopBar() {
       flexShrink: 0,
     }}>
       <span style={{ fontWeight: 600, fontSize: 15 }}>{titles[pathname] || 'AgentHQ'}</span>
-      <span style={{ fontSize: 12, color: '#64748b' }}>{time}</span>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{time}</span>
     </header>
   )
 }

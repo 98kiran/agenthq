@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Clock, RotateCw, ChevronRight, X, Plus, FolderKanban } from 'lucide-react'
 import { getAgentColor, PRIORITY_COLORS, relativeTime } from '@/lib/constants'
 
 interface Task {
@@ -18,86 +20,175 @@ interface Task {
   metadata: Record<string, unknown> | null
 }
 
-interface Agent { id: string; display_name: string }
+interface Agent { id: string; display_name: string; emoji?: string; color?: string }
 
 const COLUMNS = [
-  { key: 'todo', label: 'Todo' },
-  { key: 'in-progress', label: 'In Progress' },
-  { key: 'review', label: 'Review' },
-  { key: 'done', label: 'Done' },
+  { key: 'todo',        label: 'Todo',        color: '#3b82f6' },
+  { key: 'in-progress', label: 'In Progress', color: '#f59e0b' },
+  { key: 'review',      label: 'Review',      color: '#7c3aed' },
+  { key: 'done',        label: 'Done',        color: '#22c55e' },
 ]
+
+// Agent data loaded dynamically from /api/agents -- no hardcoded agent lists
+
+function SkeletonCard() {
+  return (
+    <div className="glass task-card animate-pulse" style={{ padding: 16, marginBottom: 10 }}>
+      <div style={{ height: 13, width: '90%', borderRadius: 4, background: 'var(--border)', marginBottom: 10 }} />
+      <div style={{ height: 13, width: '60%', borderRadius: 4, background: 'var(--border)', marginBottom: 10 }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--border)' }} />
+        <div style={{ height: 24, width: 60, borderRadius: 12, background: 'var(--border)' }} />
+        <div style={{ height: 24, width: 48, borderRadius: 12, background: 'var(--border)', marginLeft: 'auto' }} />
+      </div>
+    </div>
+  )
+}
+
+interface AgentFull { id: string; display_name: string; emoji?: string; color?: string }
 
 function TaskCard({ task, onStatusChange, onArchive, agents }: {
   task: Task
   onStatusChange: (id: string, status: string) => void
   onArchive: (id: string) => void
-  agents: Agent[]
+  agents: AgentFull[]
 }) {
   const [expanded, setExpanded] = useState(false)
-  const agentColor = getAgentColor(task.agent)
-  const priorityColor = PRIORITY_COLORS[task.priority] || '#6b7280'
-  const agentName = agents.find(a => a.id === task.agent)?.display_name || task.agent
-  const initials = (agentName || '?').slice(0, 2).toUpperCase()
+  const matchedAgent = agents.find(a => a.id === task.agent)
+  const agentColor = matchedAgent?.color || getAgentColor(task.agent)
+  const priorityColor = PRIORITY_COLORS[task.priority] || 'var(--badge-slate)'
+  const agentName = matchedAgent?.display_name || task.agent
+  const agentEmoji = matchedAgent?.emoji || '🤖'
 
   return (
-    <div style={{
-      background: '#0a0a0f',
-      border: '1px solid #1e1e2e',
-      borderRadius: 8,
-      padding: 12,
-      marginBottom: 8,
-      cursor: 'pointer',
-    }} onClick={() => setExpanded(e => !e)}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, lineHeight: 1.4 }}>
-        {task.description?.slice(0, 80)}{task.description?.length > 80 ? '…' : ''}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{
-          width: 22, height: 22, borderRadius: '50%',
-          background: agentColor + '22', border: `1.5px solid ${agentColor}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 700, color: agentColor, flexShrink: 0,
-        }}>{initials}</div>
-        <span style={{ fontSize: 11, color: agentColor }}>{agentName}</span>
-        <span style={{
-          padding: '1px 7px', borderRadius: 20, fontSize: 10,
-          background: priorityColor + '22', color: priorityColor, border: `1px solid ${priorityColor}44`,
-          textTransform: 'capitalize',
-        }}>{task.priority}</span>
-        <span style={{ fontSize: 11, color: '#64748b', marginLeft: 'auto' }}>
-          {relativeTime(task.assigned_at)}
-        </span>
-      </div>
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      whileHover={{ y: -1 }}
+      className="glass task-card group"
+      style={{ padding: 14, marginBottom: 10, cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+      onClick={() => setExpanded(e => !e)}
+    >
+      {/* Agent color strip */}
+      <div style={{
+        position: 'absolute', left: 0, top: 8, bottom: 8,
+        width: 3, borderRadius: '0 3px 3px 0', background: agentColor,
+      }} />
 
-      {expanded && (
-        <div style={{ marginTop: 12, borderTop: '1px solid #1e1e2e', paddingTop: 10 }} onClick={e => e.stopPropagation()}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>{task.description}</div>
-          <div style={{ fontSize: 11, color: '#64748b', lineHeight: 2 }}>
-            {task.project && <div>Project: {task.project}</div>}
-            {task.phase && <div>Phase: {task.phase}</div>}
-            {task.retries != null && <div>Retries: {task.retries}</div>}
-            {task.timeout_minutes && <div>Timeout: {task.timeout_minutes}m</div>}
-            {task.assigned_at && <div>Assigned: {new Date(task.assigned_at).toLocaleString()}</div>}
-            {task.updated_at && <div>Updated: {new Date(task.updated_at).toLocaleString()}</div>}
-            {task.completed_at && <div>Completed: {new Date(task.completed_at).toLocaleString()}</div>}
+      <div style={{ paddingLeft: 10 }}>
+        {/* Top row: agent badge + archive btn */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, borderRadius: '50%',
+              background: agentColor + '22',
+            }}>{agentEmoji}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+              background: agentColor + '20', color: agentColor,
+            }}>{agentName}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            {COLUMNS.filter(c => c.key !== task.status).map(c => (
-              <button key={c.key} onClick={() => onStatusChange(task.id, c.key)} style={{
-                padding: '4px 10px', fontSize: 11, borderRadius: 5,
-                background: '#1e1e2e', color: '#94a3b8', border: '1px solid #2e2e3e', cursor: 'pointer',
-              }}>→ {c.label}</button>
-            ))}
-            {task.status === 'done' && (
-              <button onClick={() => onArchive(task.id)} style={{
-                padding: '4px 10px', fontSize: 11, borderRadius: 5,
-                background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', cursor: 'pointer',
-              }}>Archive</button>
-            )}
-          </div>
+          <button
+            onClick={e => { e.stopPropagation(); onArchive(task.id) }}
+            style={{
+              opacity: 0, color: 'var(--text-muted)', padding: 2, borderRadius: 4,
+              background: 'none', border: 'none', cursor: 'pointer', lineHeight: 0,
+              transition: 'opacity 0.15s, color 0.15s',
+            }}
+            className="group-hover-archive"
+            aria-label="Archive"
+          >
+            <X size={13} />
+          </button>
         </div>
-      )}
-    </div>
+
+        {/* Project / description */}
+        {task.project && (
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4, lineHeight: 1.35 }}>
+            {task.project}
+          </p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, marginBottom: 8 }}>
+          {task.description?.slice(0, 70)}{task.description?.length > 70 ? '…' : ''}
+        </p>
+
+        {/* Priority + time */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {task.priority && (
+            <span className="badge" style={{
+              background: priorityColor + '22', color: priorityColor,
+              border: `1px solid ${priorityColor}44`, textTransform: 'capitalize',
+              fontSize: 10,
+            }}>{task.priority}</span>
+          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            <Clock size={10} />{relativeTime(task.assigned_at)}
+          </span>
+          {task.retries != null && task.retries > 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#eab308' }}>
+              <RotateCw size={10} />{task.retries}
+            </span>
+          )}
+        </div>
+
+        {/* Expanded detail */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              style={{ overflow: 'hidden' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                  {task.description}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 2 }}>
+                  {task.project && <div>Project: {task.project}</div>}
+                  {task.phase && <div>Phase: {task.phase}</div>}
+                  {task.timeout_minutes && <div>Timeout: {task.timeout_minutes}m</div>}
+                  {task.assigned_at && <div suppressHydrationWarning>Assigned: {new Date(task.assigned_at).toLocaleString()}</div>}
+                  {task.updated_at && <div suppressHydrationWarning>Updated: {new Date(task.updated_at).toLocaleString()}</div>}
+                  {task.completed_at && <div suppressHydrationWarning>Completed: {new Date(task.completed_at).toLocaleString()}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  {COLUMNS.filter(c => c.key !== task.status).map(c => (
+                    <button key={c.key} onClick={() => onStatusChange(task.id, c.key)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                        background: 'none', cursor: 'pointer',
+                        border: `1px solid ${c.color}44`, color: c.color,
+                        opacity: 0.7, transition: 'opacity 0.15s',
+                      }}
+                      onMouseOver={e => (e.currentTarget.style.opacity = '1')}
+                      onMouseOut={e => (e.currentTarget.style.opacity = '0.7')}
+                    >
+                      <ChevronRight size={10} /> {c.label}
+                    </button>
+                  ))}
+                  {task.status === 'done' && (
+                    <button onClick={() => onArchive(task.id)}
+                      style={{
+                        fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                        background: 'rgba(239,68,68,0.12)', color: '#ef4444',
+                        border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer',
+                      }}>
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
   )
 }
 
@@ -129,35 +220,34 @@ function AddTaskModal({ agents, onClose, onAdd }: {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-    }} onClick={onClose}>
-      <div style={{
-        background: '#111118', border: '1px solid #1e1e2e', borderRadius: 12,
-        padding: 28, width: 440, maxWidth: '90vw',
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 20 }}>Add Task</div>
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+        backdropFilter: 'blur(6px)',
+      }} onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+        className="card" style={{ padding: 28, width: 440, maxWidth: '90vw', borderRadius: 16 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 20, color: 'var(--text-primary)' }}>Add Task</div>
         {(['description', 'project'] as const).map(f => (
           <div key={f} style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
             <input
               value={form[f]}
               onChange={e => setForm(p => ({ ...p, [f]: e.target.value }))}
               placeholder={f === 'description' ? 'Task description...' : 'Project name'}
-              style={{
-                width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e',
-                color: '#e2e8f0', borderRadius: 6, padding: '8px 12px', fontSize: 13,
-              }}
+              className="input-field"
             />
           </div>
         ))}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4 }}>Agent</label>
-          <select value={form.agent} onChange={e => setForm(p => ({ ...p, agent: e.target.value }))} style={{
-            width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e',
-            color: '#e2e8f0', borderRadius: 6, padding: '8px 12px', fontSize: 13,
-          }}>
+          <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Agent</label>
+          <select value={form.agent} onChange={e => setForm(p => ({ ...p, agent: e.target.value }))} className="input-field">
             <option value="">— None —</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}
           </select>
@@ -165,11 +255,8 @@ function AddTaskModal({ agents, onClose, onAdd }: {
         <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
           {(['priority', 'status'] as const).map(f => (
             <div key={f} style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
-              <select value={form[f]} onChange={e => setForm(p => ({ ...p, [f]: e.target.value }))} style={{
-                width: '100%', background: '#0a0a0f', border: '1px solid #1e1e2e',
-                color: '#e2e8f0', borderRadius: 6, padding: '8px 12px', fontSize: 13,
-              }}>
+              <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
+              <select value={form[f]} onChange={e => setForm(p => ({ ...p, [f]: e.target.value }))} className="input-field">
                 {f === 'priority'
                   ? ['low','medium','high','critical'].map(v => <option key={v} value={v}>{v}</option>)
                   : ['todo','in-progress','review','done'].map(v => <option key={v} value={v}>{v}</option>)
@@ -178,19 +265,21 @@ function AddTaskModal({ agents, onClose, onAdd }: {
             </div>
           ))}
         </div>
-        {error && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+        {error && (
+          <div style={{
+            color: 'var(--badge-red)', fontSize: 12, marginBottom: 12, padding: '8px 12px',
+            background: 'color-mix(in srgb, var(--badge-red) 10%, transparent)', borderRadius: 6,
+            border: '1px solid color-mix(in srgb, var(--badge-red) 25%, transparent)',
+          }}>{error}</div>
+        )}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{
-            padding: '8px 18px', background: '#1e1e2e', color: '#94a3b8',
-            border: '1px solid #2e2e3e', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-          }}>Cancel</button>
-          <button onClick={submit} disabled={saving} style={{
-            padding: '8px 18px', background: '#7c3aed', color: '#fff',
-            border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-          }}>{saving ? 'Saving…' : 'Add Task'}</button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={submit} disabled={saving} className="btn btn-primary">
+            {saving ? 'Saving…' : 'Add Task'}
+          </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -245,85 +334,108 @@ export default function Tasks() {
     return true
   })
 
-  const getColumn = (col: string) => filtered.filter(t => t.status === col)
-
-  if (loading) return <div style={{ color: '#64748b' }}>Loading tasks...</div>
+  const getColumn = (col: string) => {
+    const colTasks = filtered.filter(t => t.status === col)
+    // Limit done column to latest 5
+    if (col === 'done') return colTasks.slice(0, 5)
+    return colTasks
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={filterAgent} onChange={e => setFilterAgent(e.target.value)} style={{
-          background: '#111118', border: '1px solid #1e1e2e', color: '#94a3b8',
-          borderRadius: 6, padding: '6px 12px', fontSize: 13,
-        }}>
-          <option value="">All agents</option>
-          {agents.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}
-        </select>
-        <select value={filterProject} onChange={e => setFilterProject(e.target.value)} style={{
-          background: '#111118', border: '1px solid #1e1e2e', color: '#94a3b8',
-          borderRadius: 6, padding: '6px 12px', fontSize: 13,
-        }}>
-          <option value="">All projects</option>
-          {projects.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <button onClick={() => setShowModal(true)} style={{
-          marginLeft: 'auto', padding: '7px 18px', background: '#7c3aed',
-          color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 500,
-        }}>+ Add Task</button>
+      {/* Sticky header */}
+      <div className="sticky-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <FolderKanban size={20} style={{ color: 'var(--accent)' }} />
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>Tasks</h1>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {tasks.length} task{tasks.length !== 1 ? 's' : ''} · {tasks.filter(t => t.status === 'in-progress').length} in progress
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={filterAgent} onChange={e => setFilterAgent(e.target.value)}
+            className="input-field" style={{ width: 'auto' }}>
+            <option value="">All agents</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.display_name}</option>)}
+          </select>
+          <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+            className="input-field" style={{ width: 'auto' }}>
+            <option value="">All projects</option>
+            {projects.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <button onClick={() => setShowModal(true)} className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Plus size={14} /> Add Task
+          </button>
+        </div>
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 16,
-        alignItems: 'start',
-      }}>
-        {COLUMNS.map(col => {
-          const colTasks = getColumn(col.key)
-          return (
-            <div key={col.key} style={{
-              background: '#111118',
-              border: '1px solid #1e1e2e',
-              borderRadius: 10,
-              padding: 14,
-              minHeight: 200,
-            }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                marginBottom: 14,
-              }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{col.label}</span>
-                <span style={{
-                  background: '#1e1e2e', borderRadius: 20, padding: '1px 8px',
-                  fontSize: 11, color: '#64748b',
-                }}>{colTasks.length}</span>
-              </div>
-              {colTasks.map(t => (
-                <TaskCard
-                  key={t.id}
-                  task={t}
-                  onStatusChange={updateStatus}
-                  onArchive={archive}
-                  agents={agents}
-                />
-              ))}
-              {colTasks.length === 0 && (
-                <div style={{ fontSize: 12, color: '#3a3a4a', textAlign: 'center', paddingTop: 20 }}>
-                  Empty
+      <div className="page-container" style={{ overflowX: 'auto' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(220px, 1fr))',
+          gap: 20,
+          alignItems: 'start',
+        }}>
+          {COLUMNS.map(col => {
+            const colTasks = getColumn(col.key)
+            return (
+              <div key={col.key} style={{ minWidth: 0 }}>
+                {/* Column header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingLeft: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color, display: 'inline-block', flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {col.label}
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+                    background: col.color + '18', color: col.color, marginLeft: 'auto',
+                  }}>{col.key === 'done' ? `${colTasks.length}/${filtered.filter(t => t.status === 'done').length}` : colTasks.length}</span>
                 </div>
-              )}
-            </div>
-          )
-        })}
+
+                {/* Cards */}
+                <AnimatePresence>
+                  {loading
+                    ? Array(2).fill(0).map((_, i) => <SkeletonCard key={i} />)
+                    : colTasks.length === 0
+                      ? (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                          style={{
+                            textAlign: 'center', padding: '32px 16px',
+                            color: 'var(--text-muted)', fontSize: 12,
+                            border: '1.5px dashed var(--border)', borderRadius: 12,
+                          }}>
+                          <div style={{ fontSize: 20, marginBottom: 6 }}>—</div>
+                          Empty
+                        </motion.div>
+                      )
+                      : colTasks.map(t => (
+                        <TaskCard key={t.id} task={t} onStatusChange={updateStatus} onArchive={archive} agents={agents} />
+                      ))
+                  }
+                </AnimatePresence>
+              </div>
+            )
+          })}
+        </div>
+
+        <AnimatePresence>
+          {showModal && (
+            <AddTaskModal
+              agents={agents}
+              onClose={() => setShowModal(false)}
+              onAdd={task => setTasks(prev => [task, ...prev])}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
-      {showModal && (
-        <AddTaskModal
-          agents={agents}
-          onClose={() => setShowModal(false)}
-          onAdd={task => setTasks(prev => [task, ...prev])}
-        />
-      )}
+      <style>{`
+        .group:hover .group-hover-archive { opacity: 1 !important; }
+        .group-hover-archive:hover { color: #ef4444 !important; }
+      `}</style>
     </div>
   )
 }

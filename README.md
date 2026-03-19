@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentHQ
 
-## Getting Started
+A lightweight ops dashboard for OpenClaw agent teams. See who's online, what they're working on, and what happened -- all in one place.
 
-First, run the development server:
+## Features
+
+- **Dashboard** -- Agent status, system health (CPU/RAM/disk), active tasks at a glance
+- **Timeline** -- Chronological feed of all agent activity with filters and search
+- **Task Board** -- Kanban-style board with drag-and-drop, status tracking, and agent assignment
+- **Auto-Observer** -- Automatically detects agent sessions and logs activity (no manual discipline required)
+
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Clone
+git clone https://github.com/98kiran/agenthq.git
+cd agenthq
+
+# Install
+npm install
+
+# Setup (choose one)
+bash setup.sh supabase <your-url> <your-service-key>
+# OR
+bash setup.sh sqlite
+
+# Build & run
+npm run build
+npx pm2 start npm --name agenthq -- start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then visit `http://localhost:3000` (or your configured port).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Default password: `changeme` (update in `.env.local`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database Options
 
-## Learn More
+### Supabase (Recommended)
+Cloud-hosted, real-time, works across devices. Free tier available.
 
-To learn more about Next.js, take a look at the following resources:
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run `schema.sql` in the SQL Editor
+3. Copy your project URL and service role key
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### SQLite (Offline)
+Zero config, runs locally, no account needed.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Set `DB_MODE=sqlite` in `.env.local`. Data stored in `./data/agenthq.db`.
 
-## Deploy on Vercel
+## Observer
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The observer auto-detects agent sessions from OpenClaw's session store and logs activity to your database. Set up a cron job:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+# Every 30 seconds
+* * * * * cd /path/to/agenthq && python3 observer.py >> observer.log 2>&1
+* * * * * sleep 30 && cd /path/to/agenthq && python3 observer.py >> observer.log 2>&1
+```
+
+## Stack
+
+- Next.js 14 + Tailwind CSS
+- Framer Motion animations
+- Supabase or SQLite (your choice)
+- Python observer (reads OpenClaw session files)
+
+## License
+
+MIT

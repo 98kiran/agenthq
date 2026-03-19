@@ -1,4 +1,8 @@
 node_modules/
 .next/
+data/
 .env.local
-*.log
+.observer-state.json
+observer.log
+*.db
+__pycache__/

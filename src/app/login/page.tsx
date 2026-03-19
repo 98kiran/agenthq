@@ -1,5 +1,5 @@
 'use client'
-import { useState, FormEvent, useEffect, Suspense } from 'react'
+import { useState, FormEvent, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 function LoginForm() {
@@ -39,36 +39,28 @@ function LoginForm() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0a0a0f',
+      background: 'var(--bg)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
     }}>
-      <div style={{
-        background: '#111118',
-        border: '1px solid #1e1e2e',
-        borderRadius: 12,
-        padding: '40px 48px',
-        width: 360,
-        maxWidth: '90vw',
-      }}>
+      <div className="card" style={{ padding: '40px 48px', width: 420, maxWidth: '90vw', borderRadius: 16 }}>
         {/* Logo / Title */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            width: 48, height: 48, borderRadius: 12,
-            background: '#7c3aed22',
-            border: '2px solid #7c3aed',
+            width: 52, height: 52, borderRadius: 14,
+            background: 'color-mix(in srgb, var(--accent) 13%, transparent)',
+            border: '2px solid var(--accent)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 24, marginBottom: 12,
+            fontSize: 26, marginBottom: 14,
           }}>⚡</div>
-          <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 20, letterSpacing: '-0.3px' }}>AgentHQ</div>
-          <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>Ops Dashboard</div>
+          <div className="gradient-text" style={{ fontWeight: 700, fontSize: 22, letterSpacing: '-0.4px' }}>AgentHQ</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>Ops Dashboard</div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ color: '#94a3b8', fontSize: 13, display: 'block', marginBottom: 8 }}>
+            <label style={{ color: 'var(--text-secondary)', fontSize: 13, display: 'block', marginBottom: 8 }}>
               Password
             </label>
             <input
@@ -78,29 +70,18 @@ function LoginForm() {
               placeholder="Enter password"
               autoFocus
               required
-              style={{
-                width: '100%',
-                background: '#0a0a0f',
-                border: `1px solid ${error ? '#ef4444' : '#1e1e2e'}`,
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#f1f5f9',
-                fontSize: 14,
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.15s',
-              }}
-              onFocus={e => { if (!error) e.target.style.borderColor = '#7c3aed' }}
-              onBlur={e => { if (!error) e.target.style.borderColor = '#1e1e2e' }}
+              className="input-field"
+              style={error ? { borderColor: 'var(--badge-red)' } : {}}
             />
           </div>
 
           {error && (
             <div style={{
-              color: '#ef4444', fontSize: 13,
+              color: 'var(--badge-red)', fontSize: 13,
               marginBottom: 16, padding: '8px 12px',
-              background: '#ef444411', borderRadius: 6,
-              border: '1px solid #ef444433',
+              background: 'color-mix(in srgb, var(--badge-red) 10%, transparent)',
+              borderRadius: 8,
+              border: '1px solid color-mix(in srgb, var(--badge-red) 25%, transparent)',
             }}>
               {error}
             </div>
@@ -109,18 +90,8 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            style={{
-              width: '100%',
-              background: loading ? '#4c1d95' : '#7c3aed',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '11px 16px',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background 0.15s',
-            }}
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', padding: '11px 16px', fontSize: 14 }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

@@ -1,62 +1,61 @@
-export const AGENT_COLORS: Record<string, string> = {
-  nova: '#7c3aed',
-  samdev: '#06b6d4',
-  marty: '#f59e0b',
-  scout: '#10b981',
-  quill: '#8b5cf6',
-  raven: '#ef4444',
-  dexter: '#3b82f6',
+// Auto-generated color palette for agents without custom colors
+const PALETTE = [
+  '#7c3aed', '#2563eb', '#dc2626', '#0ea5e9', '#14b8a6',
+  '#d97706', '#8b5cf6', '#059669', '#e11d48', '#0284c7',
+  '#7c2d12', '#4f46e5', '#15803d', '#b91c1c', '#0369a1',
+]
+
+// Simple hash for consistent color assignment
+function hashCode(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
 }
 
-export const EVENT_TYPE_COLORS: Record<string, string> = {
-  spawn: '#06b6d4',
-  completion: '#10b981',
-  error: '#ef4444',
-  assignment: '#7c3aed',
-  deploy: '#f59e0b',
-  system: '#6b7280',
-  cron: '#3b82f6',
+// Dynamic agent color -- consistent per agent ID, no hardcoded mapping
+export function getAgentColor(agentId: string | null | undefined): string {
+  if (!agentId || agentId === 'system') return '#8c8c9a'
+  return PALETTE[hashCode(agentId) % PALETTE.length]
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {
   critical: '#ef4444',
   high: '#f97316',
-  medium: '#3b82f6',
-  low: '#6b7280',
+  medium: '#eab308',
+  low: '#22c55e',
 }
 
-export function getAgentColor(agentId: string): string {
-  return AGENT_COLORS[agentId?.toLowerCase()] || '#6b7280'
+export function relativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
 }
 
-export function getStatusColor(status: string, lastActive: string | null): string {
-  if (status === 'error') return '#ef4444'
-  if (!lastActive) return '#6b7280'
-  const diff = Date.now() - new Date(lastActive).getTime()
-  const mins = diff / 60000
-  if (mins < 5) return '#10b981'
-  if (mins < 60) return '#f59e0b'
+export function getStatusColor(status: string, lastActive?: string | null): string {
+  if (status === 'online') return '#22c55e'
+  if (status === 'idle') return '#eab308'
+  if (status === 'busy') return '#f97316'
   return '#6b7280'
 }
 
-export function getStatusLabel(status: string, lastActive: string | null): string {
-  if (status === 'error') return 'error'
-  if (!lastActive) return 'offline'
-  const diff = Date.now() - new Date(lastActive).getTime()
-  const mins = diff / 60000
-  if (mins < 5) return 'online'
-  if (mins < 60) return 'idle'
-  return 'offline'
+export function getStatusLabel(status: string, lastActive?: string | null): string {
+  if (status === 'online') return 'Online'
+  if (status === 'idle') return 'Idle'
+  if (status === 'busy') return 'Busy'
+  if (lastActive) return relativeTime(lastActive)
+  return 'Offline'
 }
 
-export function relativeTime(ts: string | null): string {
-  if (!ts) return 'never'
-  const diff = Date.now() - new Date(ts).getTime()
-  const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+export const SYSTEM_AGENT = {
+  id: 'system',
+  label: 'System',
+  emoji: '🤖',
+  color: '#8c8c9a',
 }

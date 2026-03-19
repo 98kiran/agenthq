@@ -43,12 +43,55 @@ def load_env():
     return env
 
 ENV = load_env()
-SUPABASE_URL = ENV.get("SUPABASE_URL", "")
-SUPABASE_KEY = ENV.get("SUPABASE_KEY", "")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("ERROR: SUPABASE_URL or SUPABASE_KEY not found in config.env")
+# Also load .env.local from the agenthq directory
+DOTENV_LOCAL = Path(__file__).parent / ".env.local"
+if DOTENV_LOCAL.exists():
+    for line in DOTENV_LOCAL.read_text().splitlines():
+        line = line.strip()
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            ENV.setdefault(k.strip(), v.strip())
+
+DB_MODE = os.environ.get("DB_MODE", ENV.get("DB_MODE", "supabase"))
+SUPABASE_URL = os.environ.get("SUPABASE_URL", ENV.get("SUPABASE_URL", ""))
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", ENV.get("SUPABASE_SERVICE_KEY", ENV.get("SUPABASE_KEY", "")))
+SQLITE_PATH = os.environ.get("SQLITE_PATH", ENV.get("SQLITE_PATH", str(Path(__file__).parent / "data" / "agenthq.db")))
+
+if DB_MODE == "supabase" and (not SUPABASE_URL or not SUPABASE_KEY):
+    print("ERROR: SUPABASE_URL or SUPABASE_KEY not found. Set DB_MODE=sqlite for offline mode.")
     sys.exit(1)
+
+# ── SQLite backend ──────────────────────────────────────
+_sqlite_conn = None
+def get_sqlite():
+    global _sqlite_conn
+    if _sqlite_conn is None:
+        import sqlite3
+        os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
+        _sqlite_conn = sqlite3.connect(SQLITE_PATH)
+        _sqlite_conn.row_factory = sqlite3.Row
+        _sqlite_conn.execute("PRAGMA journal_mode=WAL")
+        _sqlite_conn.executescript("""
+            CREATE TABLE IF NOT EXISTS agent_config (
+                id TEXT PRIMARY KEY, display_name TEXT, role TEXT DEFAULT '',
+                model TEXT DEFAULT '', status TEXT DEFAULT 'offline',
+                emoji TEXT DEFAULT '🤖', color TEXT DEFAULT '#8c8c9a',
+                last_active TEXT, session_key TEXT, session_count INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY, description TEXT, project TEXT, agent TEXT,
+                priority TEXT DEFAULT 'medium', status TEXT DEFAULT 'todo', phase TEXT,
+                assigned_at TEXT, updated_at TEXT, completed_at TEXT,
+                retries INTEGER DEFAULT 0, timeout_minutes INTEGER DEFAULT 30, metadata TEXT
+            );
+            CREATE TABLE IF NOT EXISTS timeline_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, agent TEXT, event_type TEXT,
+                title TEXT, description TEXT, timestamp TEXT, status TEXT
+            );
+        """)
+    return _sqlite_conn
 
 # ── State Management ────────────────────────────────────
 def load_state():
@@ -106,6 +149,73 @@ def supabase_get(path):
         print(f"  Supabase GET {path}: {e}")
         return None
 
+# ── DB abstraction wrappers ─────────────────────────────
+def db_get(table, filters=None, select="*"):
+    """Get rows from table. filters is a dict of column=value."""
+    if DB_MODE == "sqlite":
+        conn = get_sqlite()
+        where = []
+        params = []
+        if filters:
+            for k, v in filters.items():
+                if k.endswith("__neq"):
+                    where.append(f"{k[:-5]} != ?")
+                    params.append(v)
+                else:
+                    where.append(f"{k} = ?")
+                    params.append(v)
+        clause = f" WHERE {' AND '.join(where)}" if where else ""
+        rows = conn.execute(f"SELECT {select} FROM {table}{clause}", params).fetchall()
+        return [dict(r) for r in rows]
+    else:
+        path = f"{table}?select={select}"
+        if filters:
+            for k, v in filters.items():
+                if k.endswith("__neq"):
+                    path += f"&{k[:-5]}=neq.{v}"
+                else:
+                    path += f"&{k}=eq.{v}"
+        return supabase_get(path)
+
+def db_upsert(table, data):
+    """Insert or update a row."""
+    if DB_MODE == "sqlite":
+        conn = get_sqlite()
+        cols = list(data.keys())
+        placeholders = ",".join(["?"] * len(cols))
+        updates = ",".join([f"{c}=excluded.{c}" for c in cols if c != "id"])
+        conn.execute(
+            f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders}) ON CONFLICT(id) DO UPDATE SET {updates}",
+            list(data.values())
+        )
+        conn.commit()
+        return {"ok": True}
+    else:
+        return supabase_request("POST", table, data)
+
+def db_update(table, id_field, id_value, data):
+    """Update rows matching id."""
+    if DB_MODE == "sqlite":
+        conn = get_sqlite()
+        sets = ",".join([f"{k}=?" for k in data.keys()])
+        conn.execute(f"UPDATE {table} SET {sets} WHERE {id_field}=?", list(data.values()) + [id_value])
+        conn.commit()
+        return {"ok": True}
+    else:
+        return supabase_request("PATCH", f"{table}?{id_field}=eq.{id_value}", data)
+
+def db_insert(table, data):
+    """Insert a row (no conflict handling)."""
+    if DB_MODE == "sqlite":
+        conn = get_sqlite()
+        cols = list(data.keys())
+        placeholders = ",".join(["?"] * len(cols))
+        conn.execute(f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders})", list(data.values()))
+        conn.commit()
+        return {"ok": True}
+    else:
+        return supabase_request("POST", table, data)
+
 # ── OpenClaw Session Reading ────────────────────────────
 def get_all_sessions():
     """Read session data from all agent session stores."""
@@ -152,12 +262,21 @@ def extract_subagent_sessions(sessions):
     return subagent_sessions
 
 def session_is_complete(session):
-    """Heuristic: session is complete if it has output tokens and hasn't been updated recently."""
+    """Session is complete if totalTokensFresh is True AND has meaningful output."""
+    output_tokens = session.get("outputTokens", 0)
+    
+    # No output = not complete, period
+    if output_tokens == 0:
+        return False
+    
+    # Best signal: OpenClaw marks totalTokensFresh=True when a run completes
+    if session.get("totalTokensFresh") == True and output_tokens > 0:
+        return True
+    
+    # Fallback heuristic: inactive for 5 min with output
     updated_at = session.get("updatedAt", 0)
     age_ms = int(time.time() * 1000) - updated_at
-    has_output = session.get("outputTokens", 0) > 0
-    # If session hasn't been updated in 5 minutes and has output, it's done
-    return has_output and age_ms > 300_000
+    return output_tokens > 0 and age_ms > 300_000
 
 def session_is_active(session):
     """Session updated in last 5 minutes."""
@@ -167,24 +286,34 @@ def session_is_active(session):
 
 # ── Core Observer Logic ─────────────────────────────────
 def observe():
-    print(f"\n[{datetime.now(timezone.utc).isoformat()}] Observer running...")
+    # Silent unless changes detected
     
     state = load_state()
     known = state.get("known_sessions", {})
     
     sessions = get_all_sessions()
-    print(f"  Found {len(sessions)} total sessions")
-    
     subagent_sessions = extract_subagent_sessions(sessions)
-    print(f"  Found {len(subagent_sessions)} subagent sessions")
     
-    # Get existing tasks from Supabase
-    existing_tasks = supabase_get("tasks?select=id,status&status=neq.archived") or []
+    # Get existing tasks
+    existing_tasks = db_get("tasks", {"status__neq": "archived"}, "id,status") or []
     existing_task_ids = {t["id"] for t in existing_tasks}
     
     new_tasks = 0
     updated_tasks = 0
     timeline_events = 0
+    
+    # Also check for manually-created tasks that already track a session
+    existing_tasks_full = db_get("tasks", {"status__neq": "archived"}, "id,status,metadata") or []
+    tracked_sessions = set()
+    for t in existing_tasks_full:
+        meta = t.get("metadata")
+        if meta:
+            if isinstance(meta, str):
+                try: meta = json.loads(meta)
+                except: meta = {}
+            sk = meta.get("session_key", "")
+            if sk:
+                tracked_sessions.add(sk)
     
     for sess in subagent_sessions:
         key = sess.get("_key", "")
@@ -193,34 +322,55 @@ def observe():
         model = sess.get("model", "unknown")
         tokens = sess.get("totalTokens", 0)
         updated_at = sess.get("updatedAt", 0)
+        label = sess.get("label", "")
+        spawned_by = sess.get("spawnedBy", "")
         
-        # Generate a stable task ID from the session key
-        # Extract the UUID from the subagent key
+        # Skip CREATION if a manually-created task already tracks this session
+        # But still allow status updates for auto-created tasks
+        manually_tracked = False
+        if key in tracked_sessions and key not in known:
+            # This is a manual task we haven't seen before - skip creation only
+            manually_tracked = True
+        
+        # Generate a stable task ID from the label or session key
         parts = key.split(":")
-        task_id = f"auto-{parts[-1][:12]}" if len(parts) > 3 else f"auto-{session_id[:12]}"
+        if label:
+            task_id = f"auto-{label}"
+        else:
+            task_id = f"auto-{parts[-1][:12]}" if len(parts) > 3 else f"auto-{session_id[:12]}"
         
         prev_state = known.get(key, {})
         prev_status = prev_state.get("status", "unknown")
         
         # Determine current status
-        if session_is_active(sess):
-            current_status = "in-progress"
-        elif session_is_complete(sess):
+        if session_is_complete(sess):
+            current_status = "done"
+        elif session_is_active(sess):
             current_status = "done"
         else:
-            current_status = "in-progress"  # Default to in-progress
+            current_status = "in-progress"
         
         # New session we haven't seen before
-        if key not in known:
-            print(f"  NEW: {key} (agent={agent_id}, tokens={tokens})")
+        if key not in known and not manually_tracked:
+            # Build description from label and context
+            if label:
+                description = label.replace("-", " ").replace("_", " ").title()
+            else:
+                description = f"Subagent task for {agent_id} (session {session_id[:8]})"
             
-            # Try to get task description from session transcript
-            description = f"Subagent task for {agent_id} (session {session_id[:8]})"
+            # Derive project from label
+            project = "General"
+            if label:
+                for keyword in ["agenthq", "agent-hq", "agentHQ"]:
+                    if keyword.lower() in label.lower():
+                        project = "AgentHQ"
+                        break
             
-            # Create task in Supabase (upsert)
+            print(f"  NEW: {label or key[:50]} (agent={agent_id}, tokens={tokens})")
+            
             task_data = {
                 "id": task_id,
-                "project": "AgentHQ" if "agenthq" in key.lower() else "Auto-tracked",
+                "project": project,
                 "phase": "coding",
                 "agent": agent_id,
                 "description": description,
@@ -232,11 +382,11 @@ def observe():
             }
             
             if task_id not in existing_task_ids:
-                result = supabase_request("POST", "tasks", task_data)
+                result = db_upsert("tasks", task_data)
                 if result is not None:
                     new_tasks += 1
                     # Timeline event for new spawn
-                    supabase_request("POST", "timeline_events", {
+                    db_insert("timeline_events", {
                         "agent": agent_id,
                         "event_type": "spawn",
                         "title": f"Agent {agent_id} spawned (auto-detected)",
@@ -256,12 +406,12 @@ def observe():
             if current_status == "done":
                 patch_data["completed_at"] = datetime.now(timezone.utc).isoformat()
             
-            supabase_request("PATCH", f"tasks?id=eq.{task_id}", patch_data)
+            db_update("tasks", "id", task_id, patch_data)
             updated_tasks += 1
             
             # Timeline event for completion
             if current_status == "done":
-                supabase_request("POST", "timeline_events", {
+                db_insert("timeline_events", {
                     "agent": agent_id,
                     "event_type": "completion",
                     "title": f"Agent {agent_id} task completed (auto-detected)",
@@ -292,6 +442,7 @@ def observe():
         
         agent_session_counts[agent_id] = agent_session_counts.get(agent_id, 0) + 1
     
+    agents_updated = 0
     for agent_id, last_active_ms in agent_last_active.items():
         age_ms = int(time.time() * 1000) - last_active_ms
         
@@ -302,19 +453,41 @@ def observe():
         else:
             status = "offline"
         
-        supabase_request("PATCH", f"agent_config?id=eq.{agent_id}", {
-            "status": status,
-            "last_active": datetime.fromtimestamp(last_active_ms / 1000, tz=timezone.utc).isoformat(),
-            "session_count": agent_session_counts.get(agent_id, 0),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # Skip agent IDs that aren't in the canonical config (auto-detected from filesystem)
+        # Auto-detect from OpenClaw agents directory
+        canonical_agents = set()
+        if AGENTS_DIR.exists():
+            for d in AGENTS_DIR.iterdir():
+                if d.is_dir() and (d / "sessions").exists():
+                    canonical_agents.add(d.name)
+        # Always include "main"
+        canonical_agents.add("main")
+        if agent_id not in canonical_agents:
+            continue
+        
+        # Update if status changed OR last_active drifted more than 60s
+        prev_agent = known.get(f"agent:{agent_id}", {})
+        prev_last_active = prev_agent.get("last_active_ms", 0)
+        status_changed = prev_agent.get("status") != status
+        session_changed = prev_agent.get("session_count") != agent_session_counts.get(agent_id, 0)
+        active_drifted = abs(last_active_ms - prev_last_active) > 60_000
+        
+        if status_changed or session_changed or active_drifted:
+            db_update("agent_config", "id", agent_id, {
+                "status": status,
+                "last_active": datetime.fromtimestamp(last_active_ms / 1000, tz=timezone.utc).isoformat(),
+                "session_count": agent_session_counts.get(agent_id, 0),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            agents_updated += 1
+        known[f"agent:{agent_id}"] = {"status": status, "session_count": agent_session_counts.get(agent_id, 0), "last_active_ms": last_active_ms}
     
     # Save state
     state["known_sessions"] = known
     save_state(state)
     
-    print(f"  Results: {new_tasks} new tasks, {updated_tasks} updated, {timeline_events} timeline events")
-    print(f"  Agent health updated for {len(agent_last_active)} agents")
+    if new_tasks or updated_tasks or timeline_events or agents_updated:
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}] {new_tasks} new, {updated_tasks} updated, {timeline_events} events, {agents_updated} agents")
 
 # ── Main ────────────────────────────────────────────────
 if __name__ == "__main__":
