@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GitBranch, RefreshCw, Loader2, Zap } from "lucide-react";
+import { SYSTEM_AGENT } from "@/lib/constants";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,6 @@ interface RawTimelineEvent {
   status?: string;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-// No hardcoded agents -- loaded dynamically from /api/timeline response
-const SYSTEM_AGENT = { id: "system", label: "System", emoji: "🤖", color: "#8c8c9a" };
-
 type AgentInfo = { id: string; label: string; emoji: string; color: string };
 type AgentId = string;
 
@@ -40,9 +36,7 @@ function normalizeAgentId(agent?: string | null, knownAgents?: AgentInfo[]): str
   const value = (agent ?? "").trim().toLowerCase();
   if (!value || value === "unknown" || value === "dispatcher") return "system";
   if (knownAgents && knownAgents.some((a) => a.id === value)) return value;
-  // If we don't know the agent, keep it as-is (dynamic agents may not be in our list yet)
-  if (value && value !== "system") return value;
-  return "system";
+  return value; // pass through unknown agents instead of forcing to "system"
 }
 
 function getAgent(id: string, agents: AgentInfo[]) {
@@ -130,15 +124,13 @@ function TypeBadge({ type }: { type: string }) {
   const styles: Record<string, { bg: string; color: string; label: string }> = {
     task_complete: { bg: "rgba(34,197,94,0.15)",   color: "var(--badge-green)",  label: "complete" },
     task:          { bg: "rgba(124,58,237,0.12)",  color: "var(--badge-purple)", label: "task" },
+    assignment:    { bg: "rgba(59,130,246,0.12)",  color: "var(--badge-blue)",   label: "assigned" },
     fix:           { bg: "rgba(245,158,11,0.15)",  color: "var(--badge-amber)",  label: "fix" },
+    planning:      { bg: "rgba(124,58,237,0.12)",  color: "var(--badge-purple)", label: "planning" },
     cron:          { bg: "rgba(59,130,246,0.12)",  color: "var(--badge-blue)",   label: "cron" },
     session:       { bg: "rgba(16,185,129,0.12)",  color: "var(--badge-teal)",   label: "session" },
     system:        { bg: "rgba(100,116,139,0.12)", color: "var(--badge-slate)",  label: "system" },
-    heartbeat:       { bg: "rgba(245,158,11,0.12)",  color: "var(--badge-amber)",  label: "heartbeat" },
-    trade_executed:  { bg: "rgba(217,119,6,0.15)",   color: "#d97706",             label: "trade" },
-    bridge:          { bg: "rgba(217,119,6,0.15)",   color: "#d97706",             label: "bridge" },
-    deposit:         { bg: "rgba(217,119,6,0.15)",   color: "#d97706",             label: "deposit" },
-    withdrawal:      { bg: "rgba(217,119,6,0.15)",   color: "#d97706",             label: "withdrawal" },
+    heartbeat:     { bg: "rgba(245,158,11,0.12)",  color: "var(--badge-amber)",  label: "heartbeat" },
   };
   const s = styles[type] ?? styles.system;
   return (
@@ -184,14 +176,14 @@ function ThreadEntry({ event, isLast, agents }: { event: TimelineEvent; isLast: 
   const [expanded, setExpanded] = useState(false);
   const agent = getAgent(event.agent, agents);
   const hasDetails = event.description && event.description.length > 0;
-  const preview = event.description ? event.description.slice(0, 80) + (event.description.length > 80 ? "…" : "") : null;
+  const preview = event.description ? event.description.slice(0, 80) + (event.description.length > 80 ? "..." : "") : null;
 
   return (
-    <div className="flex items-stretch" style={{ minHeight: "72px" }}>
+    <div className="flex items-stretch" style={{ minHeight: "56px" }}>
       {/* Left: time column */}
       <div
         className="flex-shrink-0 text-right pr-2 sm:pr-4 pt-1"
-        style={{ width: "72px", color: "var(--text-muted)", fontSize: "11px", fontFamily: "monospace" }}
+        style={{ width: "56px", color: "var(--text-muted)", fontSize: "11px", fontFamily: "monospace" }}
         suppressHydrationWarning
       >
         {formatTime(event.timestamp)}
@@ -211,9 +203,9 @@ function ThreadEntry({ event, isLast, agents }: { event: TimelineEvent; isLast: 
         )}
       </div>
 
-      {/* Right: content — clickable to expand */}
+      {/* Right: content */}
       <div
-        className="flex-1 pl-5 pb-8 pt-0.5"
+        className="flex-1 pl-4 pb-5 pt-0.5"
         onClick={() => hasDetails && setExpanded(!expanded)}
         style={{ cursor: hasDetails ? "pointer" : "default" }}
       >
@@ -256,7 +248,7 @@ function ThreadEntry({ event, isLast, agents }: { event: TimelineEvent; isLast: 
             >
               {event.description}
               <div className="mt-2 pt-2 flex items-center gap-3 text-[10px]" style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}>
-                <span>🤖 {agent.label}</span>
+                <span>{agent.emoji} {agent.label}</span>
                 <span>📋 {event.type}</span>
                 <span suppressHydrationWarning>🕐 {new Date(event.timestamp).toLocaleString()}</span>
               </div>
@@ -281,7 +273,7 @@ function DateGroup({ label, events, isLastGroup, agents }: { label: string; even
   return (
     <section className="mb-2" aria-label={`Timeline group ${label}`}>
       <div className="flex items-center gap-3 mb-2">
-        <div style={{ width: "72px" }} />
+        <div style={{ width: "56px" }} />
         <div style={{ width: "20px" }} />
         <div className="flex items-center gap-2">
           <span
@@ -336,7 +328,7 @@ export default function TimelinePage() {
   const [agents, setAgents] = useState<AgentInfo[]>([SYSTEM_AGENT]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selected, setSelected] = useState<Set<AgentId>>(new Set(["system"]));
+  const [selected, setSelected] = useState<Set<AgentId>>(new Set());
   const [refreshLabel, setRefreshLabel] = useState<string>("");
   const [justRefreshed, setJustRefreshed] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -344,6 +336,7 @@ export default function TimelinePage() {
   const agentsRef = useRef(agents);
   const eventsRef = useRef(events);
   const didInitFilterFetch = useRef(false);
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -383,8 +376,12 @@ export default function TimelinePage() {
         const nextAgents = data.agents as AgentInfo[];
         setAgents((prev) => (sameAgents(prev, nextAgents) ? prev : nextAgents));
         setSelected((prev) => {
-          if (prev.size === 0) return prev;
           const validIds = new Set<string>(nextAgents.map((a: AgentInfo) => a.id));
+          // First load: select all agents
+          if (isFirstLoad.current || prev.size === 0) {
+            isFirstLoad.current = false;
+            return new Set<string>(validIds);
+          }
           const next = new Set<string>(Array.from(prev).filter((id) => validIds.has(id)));
           if (next.size === 0) return new Set<string>(validIds);
           if (next.size === prev.size && Array.from(next).every((id) => prev.has(id))) return prev;
@@ -453,15 +450,15 @@ export default function TimelinePage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
-      className="max-w-[960px] mx-auto"
+      className="max-w-[860px] mx-auto"
     >
       {/* Sticky header: title + agent filter pills */}
       <div
-        className="sticky top-0 z-20 px-3 sm:px-6 pt-5 pb-4"
+        className="sticky top-0 z-20 px-3 sm:px-6 pt-14 md:pt-5 pb-4"
         style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}
       >
         {/* Title row */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5" style={{ color: "var(--accent)" }} />
             <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
