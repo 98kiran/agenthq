@@ -95,6 +95,18 @@ def supabase_patch(table, match_params, data):
     return r.json()
 
 
+def claim_task_if_todo(task_id):
+    """Atomically claim a task only if it is still todo.
+    Returns the claimed row if successful, else None."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = supabase_patch(
+        "tasks",
+        {"id": f"eq.{task_id}", "status": "eq.todo"},
+        {"status": "in-progress", "updated_at": now_iso},
+    )
+    return rows[0] if rows else None
+
+
 def supabase_post(table, data):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     h = {**HEADERS, "Prefer": "return=minimal"}
@@ -395,21 +407,64 @@ def run():
                 "status": "eq.todo",
                 "order": "assigned_at.asc",
             })
+            in_progress_tasks = supabase_get("tasks", {
+                "status": "eq.in-progress",
+                "select": "id,agent,project,phase",
+            })
 
             if todo_tasks:
                 log.info(f"Found {len(todo_tasks)} todo task(s)")
+
+            _prune_dispatched_cache()
+            in_progress_ids = {t.get("id") for t in in_progress_tasks if t.get("id")}
+            active_signatures = {
+                (
+                    (t.get("agent") or "").strip().lower(),
+                    (t.get("project") or "").strip().lower(),
+                    (t.get("phase") or "").strip().lower(),
+                )
+                for t in in_progress_tasks
+            }
 
             for task in todo_tasks:
                 task_id = task.get("id", "?")
                 agent = task.get("agent", "unknown")
                 project = task.get("project", "Untitled")
+                phase = task.get("phase", "")
                 session_key = AGENT_SESSIONS.get(agent)
 
                 if not session_key:
                     log.warning(f"  Task {task_id}: unknown agent '{agent}', skipping")
                     continue
 
+                if task_id in _dispatched_task_ids:
+                    log.debug(f"  Task {task_id}: already dispatched this process session, skipping")
+                    continue
+
+                if task_id in in_progress_ids:
+                    log.info(f"  Task {task_id}: already in-progress in database, skipping")
+                    _dispatched_task_ids.add(task_id)
+                    continue
+
+                signature = (
+                    (agent or "").strip().lower(),
+                    (project or "").strip().lower(),
+                    (phase or "").strip().lower(),
+                )
+                if signature in active_signatures:
+                    log.warning(
+                        f"  Task {task_id}: similar task already active for agent={agent} project={project} phase={phase}; skipping dispatch"
+                    )
+                    continue
+
+                claimed = claim_task_if_todo(task_id)
+                if not claimed:
+                    log.info(f"  Task {task_id}: lost race while claiming, skipping")
+                    continue
+
                 log.info(f"  Dispatching: [{project}] → {agent}")
+                _dispatched_task_ids.add(task_id)
+                active_signatures.add(signature)
 
                 message = build_task_message(task)
 
@@ -423,12 +478,18 @@ def run():
                     # Direct chat message for non-code agents
                     notified = send_to_agent(session_key, message)
 
-                now_iso = datetime.now(timezone.utc).isoformat()
-                supabase_patch("tasks", {"id": f"eq.{task_id}"}, {
-                    "status": "in-progress",
-                    "updated_at": now_iso,
-                })
-                log.info(f"  Task {task_id} → in-progress")
+                if not notified:
+                    retry_count = int(task.get("retries", 0) or 0) + 1
+                    supabase_patch("tasks", {"id": f"eq.{task_id}", "status": "eq.in-progress"}, {
+                        "status": "todo",
+                        "retries": retry_count,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    log.warning(f"  Task {task_id}: notify failed, reverted to todo (retries={retry_count})")
+                    active_signatures.discard(signature)
+                    continue
+
+                log.info(f"  Task {task_id} dispatched and claimed")
 
                 log_timeline(
                     agent="dispatcher",
