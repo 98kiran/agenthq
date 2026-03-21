@@ -18,7 +18,6 @@ Flow:
 
 import os
 import sys
-import json
 import time
 import logging
 import requests
@@ -31,7 +30,6 @@ GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:18789")
 GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "30"))  # task poll: seconds
 HEALTH_INTERVAL = int(os.environ.get("HEALTH_INTERVAL", "60"))  # agent health poll: seconds
-ACTIVE_TASKS_FILE = os.path.expanduser("~/.openclaw/workspace/active-tasks.json")
 AGENTS_DIR = os.path.expanduser("~/.openclaw/agents")
 
 # Agent ID → session key mapping
@@ -188,31 +186,6 @@ def send_to_agent(session_key, message):
     except Exception as e:
         log.error(f"  → Gateway error: {e}")
         return False
-
-
-# ── Sync active-tasks.json for watchdog compatibility ───────────────────────
-def sync_active_tasks_file(tasks):
-    """Write non-done tasks to active-tasks.json for watchdog cron."""
-    try:
-        active = [
-            {
-                "project": t.get("project", ""),
-                "phase": t.get("phase", ""),
-                "agent": t.get("agent", ""),
-                "sessionKey": AGENT_SESSIONS.get(t.get("agent", ""), ""),
-                "assignedAt": t.get("assigned_at", ""),
-                "status": t.get("status", ""),
-                "retries": t.get("retries", 0),
-                "instruction": t.get("description", ""),
-            }
-            for t in tasks
-            if t.get("status") in ("todo", "in-progress")
-        ]
-        with open(ACTIVE_TASKS_FILE, "w") as f:
-            json.dump({"tasks": active}, f, indent=2)
-    except Exception as e:
-        log.warning(f"Failed to sync active-tasks.json: {e}")
-
 
 # ── Timeline logging (with DB dedup) ──────────────────────────────────────
 def log_timeline(agent, event_type, title, description=None):
@@ -395,6 +368,11 @@ def dispatch_tasks_once(todo_tasks, in_progress_tasks):
     """
     _prune_dispatched_cache()
     in_progress_ids = {t.get("id") for t in in_progress_tasks if t.get("id")}
+    active_agents = {
+        (t.get("agent") or "").strip().lower()
+        for t in in_progress_tasks
+        if (t.get("agent") or "").strip()
+    }
     active_signatures = {
         (
             (t.get("agent") or "").strip().lower(),
@@ -434,8 +412,14 @@ def dispatch_tasks_once(todo_tasks, in_progress_tasks):
             summary["skipped"].append((task_id, "already-in-progress"))
             continue
 
+        normalized_agent = (agent or "").strip().lower()
+        if normalized_agent in active_agents:
+            log.info(f"Agent {agent} already has an active task, skipping")
+            summary["skipped"].append((task_id, "agent-has-active-task"))
+            continue
+
         signature = (
-            (agent or "").strip().lower(),
+            normalized_agent,
             (project or "").strip().lower(),
             (phase or "").strip().lower(),
         )
@@ -454,6 +438,7 @@ def dispatch_tasks_once(todo_tasks, in_progress_tasks):
 
         log.info(f"  Dispatching: [{project}] → {agent}")
         _dispatched_task_ids[task_id] = time.time()
+        active_agents.add(normalized_agent)
         active_signatures.add(signature)
         summary["claimed"].append(task_id)
 
@@ -478,6 +463,7 @@ def dispatch_tasks_once(todo_tasks, in_progress_tasks):
             })
             log.warning(f"  Task {task_id}: notify failed, reverted to todo (retries={retry_count})")
             _dispatched_task_ids.pop(task_id, None)
+            active_agents.discard(normalized_agent)
             active_signatures.discard(signature)
             summary["reverted"].append(task_id)
             continue
@@ -535,12 +521,6 @@ def run():
                 log.info(f"Found {len(todo_tasks)} todo task(s)")
 
             dispatch_tasks_once(todo_tasks, in_progress_tasks)
-
-            # Sync active-tasks.json
-            all_active = supabase_get("tasks", {
-                "status": "in.(\"todo\",\"in-progress\")",
-            })
-            sync_active_tasks_file(all_active)
 
         except requests.exceptions.ConnectionError:
             log.warning("Connection error (gateway or Supabase down?). Retrying...")

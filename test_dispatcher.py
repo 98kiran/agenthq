@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from dispatcher import log
+
 import dispatcher
 
 
@@ -54,6 +56,31 @@ class DispatcherTests(unittest.TestCase):
         self.assertIn(("task-1", "already-dispatched"), second["skipped"])
         claim_mock.assert_called_once_with("task-1")
         send_mock.assert_called_once()
+
+    def test_one_task_per_agent_skips_when_agent_already_has_active_task(self):
+        todo_task = {
+            "id": "task-3",
+            "agent": "samdev",
+            "project": "AgentHQ",
+            "phase": "cleanup",
+            "description": "Do the cleanup",
+        }
+        in_progress_tasks = [{
+            "id": "task-active",
+            "agent": "samdev",
+            "project": "DifferentProject",
+            "phase": "other-phase",
+        }]
+
+        with patch.object(dispatcher, "claim_task_if_todo") as claim_mock, \
+             patch.object(log, "info") as info_mock:
+            summary = dispatcher.dispatch_tasks_once([todo_task], in_progress_tasks)
+
+        self.assertEqual(summary["claimed"], [])
+        self.assertEqual(summary["dispatched"], [])
+        self.assertIn(("task-3", "agent-has-active-task"), summary["skipped"])
+        claim_mock.assert_not_called()
+        info_mock.assert_any_call("Agent samdev already has an active task, skipping")
 
     def test_build_task_message_formats_expected_fields(self):
         task = {
