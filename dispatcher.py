@@ -22,7 +22,7 @@ import json
 import time
 import logging
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ── Config ──────────────────────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -218,8 +218,7 @@ def sync_active_tasks_file(tasks):
 def log_timeline(agent, event_type, title, description=None):
     # Check if this exact event already exists in last 5 minutes
     try:
-        from urllib.parse import quote
-        five_min_ago = (datetime.now(timezone.utc) - __import__('datetime').timedelta(minutes=5)).isoformat()
+        five_min_ago = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         existing = supabase_get("timeline_events", {
             "agent": f"eq.{agent}",
             "title": f"eq.{title}",
@@ -389,6 +388,112 @@ def poll_agent_health():
     log.debug(f"Health poll complete: {len(agents_to_poll)} agents checked")
 
 
+def dispatch_tasks_once(todo_tasks, in_progress_tasks):
+    """Dispatch one polling batch of tasks.
+
+    Returns a summary dict useful for testing/observability.
+    """
+    _prune_dispatched_cache()
+    in_progress_ids = {t.get("id") for t in in_progress_tasks if t.get("id")}
+    active_signatures = {
+        (
+            (t.get("agent") or "").strip().lower(),
+            (t.get("project") or "").strip().lower(),
+            (t.get("phase") or "").strip().lower(),
+        )
+        for t in in_progress_tasks
+    }
+
+    summary = {
+        "claimed": [],
+        "dispatched": [],
+        "reverted": [],
+        "skipped": [],
+    }
+
+    for task in todo_tasks:
+        task_id = task.get("id", "?")
+        agent = task.get("agent", "unknown")
+        project = task.get("project", "Untitled")
+        phase = task.get("phase", "")
+        session_key = AGENT_SESSIONS.get(agent)
+
+        if not session_key:
+            log.warning(f"  Task {task_id}: unknown agent '{agent}', skipping")
+            summary["skipped"].append((task_id, "unknown-agent"))
+            continue
+
+        if task_id in _dispatched_task_ids:
+            log.debug(f"  Task {task_id}: already dispatched this process session, skipping")
+            summary["skipped"].append((task_id, "already-dispatched"))
+            continue
+
+        if task_id in in_progress_ids:
+            log.info(f"  Task {task_id}: already in-progress in database, skipping")
+            _dispatched_task_ids[task_id] = time.time()
+            summary["skipped"].append((task_id, "already-in-progress"))
+            continue
+
+        signature = (
+            (agent or "").strip().lower(),
+            (project or "").strip().lower(),
+            (phase or "").strip().lower(),
+        )
+        if signature in active_signatures:
+            log.warning(
+                f"  Task {task_id}: similar task already active for agent={agent} project={project} phase={phase}; skipping dispatch"
+            )
+            summary["skipped"].append((task_id, "duplicate-signature"))
+            continue
+
+        claimed = claim_task_if_todo(task_id)
+        if not claimed:
+            log.info(f"  Task {task_id}: lost race while claiming, skipping")
+            summary["skipped"].append((task_id, "claim-lost"))
+            continue
+
+        log.info(f"  Dispatching: [{project}] → {agent}")
+        _dispatched_task_ids[task_id] = time.time()
+        active_signatures.add(signature)
+        summary["claimed"].append(task_id)
+
+        message = build_task_message(task)
+
+        if agent in SPAWN_AGENTS:
+            # Route through main agent -- it will spawn a subagent with tools
+            main_key = os.environ.get("MAIN_AGENT_SESSION", "agent:main:main")
+            spawn_msg = f"**[Auto-Dispatch]** New task for {agent}:\n\n{message}\n\n**Spawn {agent} as a subagent to execute this. Use a descriptive label based on the project name.**"
+            notified = send_to_agent(main_key, spawn_msg)
+            log.info(f"  → Routed to main agent for subagent spawn (agent={agent})")
+        else:
+            # Direct chat message for non-code agents
+            notified = send_to_agent(session_key, message)
+
+        if not notified:
+            retry_count = int(task.get("retries", 0) or 0) + 1
+            supabase_patch("tasks", {"id": f"eq.{task_id}", "status": "eq.in-progress"}, {
+                "status": "todo",
+                "retries": retry_count,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            log.warning(f"  Task {task_id}: notify failed, reverted to todo (retries={retry_count})")
+            _dispatched_task_ids.pop(task_id, None)
+            active_signatures.discard(signature)
+            summary["reverted"].append(task_id)
+            continue
+
+        log.info(f"  Task {task_id} dispatched and claimed")
+        summary["dispatched"].append(task_id)
+
+        log_timeline(
+            agent="dispatcher",
+            event_type="assignment",
+            title=f"Dispatched '{project}' to {agent}" + (" (notified)" if notified else " (notify failed)"),
+        )
+
+    return summary
+
+
 # ── Main loop ──────────────────────────────────────────────────────────────
 def run():
     if not SUPABASE_KEY:
@@ -429,88 +534,7 @@ def run():
             if todo_tasks:
                 log.info(f"Found {len(todo_tasks)} todo task(s)")
 
-            _prune_dispatched_cache()
-            in_progress_ids = {t.get("id") for t in in_progress_tasks if t.get("id")}
-            active_signatures = {
-                (
-                    (t.get("agent") or "").strip().lower(),
-                    (t.get("project") or "").strip().lower(),
-                    (t.get("phase") or "").strip().lower(),
-                )
-                for t in in_progress_tasks
-            }
-
-            for task in todo_tasks:
-                task_id = task.get("id", "?")
-                agent = task.get("agent", "unknown")
-                project = task.get("project", "Untitled")
-                phase = task.get("phase", "")
-                session_key = AGENT_SESSIONS.get(agent)
-
-                if not session_key:
-                    log.warning(f"  Task {task_id}: unknown agent '{agent}', skipping")
-                    continue
-
-                if task_id in _dispatched_task_ids:
-                    log.debug(f"  Task {task_id}: already dispatched this process session, skipping")
-                    continue
-
-                if task_id in in_progress_ids:
-                    log.info(f"  Task {task_id}: already in-progress in database, skipping")
-                    _dispatched_task_ids[task_id] = time.time()
-                    continue
-
-                signature = (
-                    (agent or "").strip().lower(),
-                    (project or "").strip().lower(),
-                    (phase or "").strip().lower(),
-                )
-                if signature in active_signatures:
-                    log.warning(
-                        f"  Task {task_id}: similar task already active for agent={agent} project={project} phase={phase}; skipping dispatch"
-                    )
-                    continue
-
-                claimed = claim_task_if_todo(task_id)
-                if not claimed:
-                    log.info(f"  Task {task_id}: lost race while claiming, skipping")
-                    continue
-
-                log.info(f"  Dispatching: [{project}] → {agent}")
-                _dispatched_task_ids[task_id] = time.time()
-                active_signatures.add(signature)
-
-                message = build_task_message(task)
-
-                if agent in SPAWN_AGENTS:
-                    # Route through main agent -- it will spawn a subagent with tools
-                    main_key = os.environ.get("MAIN_AGENT_SESSION", "agent:main:main")
-                    spawn_msg = f"**[Auto-Dispatch]** New task for {agent}:\n\n{message}\n\n**Spawn {agent} as a subagent to execute this. Use a descriptive label based on the project name.**"
-                    notified = send_to_agent(main_key, spawn_msg)
-                    log.info(f"  → Routed to main agent for subagent spawn (agent={agent})")
-                else:
-                    # Direct chat message for non-code agents
-                    notified = send_to_agent(session_key, message)
-
-                if not notified:
-                    retry_count = int(task.get("retries", 0) or 0) + 1
-                    supabase_patch("tasks", {"id": f"eq.{task_id}", "status": "eq.in-progress"}, {
-                        "status": "todo",
-                        "retries": retry_count,
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                    })
-                    log.warning(f"  Task {task_id}: notify failed, reverted to todo (retries={retry_count})")
-                    _dispatched_task_ids.pop(task_id, None)
-                    active_signatures.discard(signature)
-                    continue
-
-                log.info(f"  Task {task_id} dispatched and claimed")
-
-                log_timeline(
-                    agent="dispatcher",
-                    event_type="assignment",
-                    title=f"Dispatched '{project}' to {agent}" + (" (notified)" if notified else " (notify failed)"),
-                )
+            dispatch_tasks_once(todo_tasks, in_progress_tasks)
 
             # Sync active-tasks.json
             all_active = supabase_get("tasks", {
