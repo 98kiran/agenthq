@@ -24,6 +24,14 @@ sudo apt-get install -y nodejs
 ## Quick Start
 
 ```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/98kiran/agenthq/master/install.sh)
+```
+
+That's it. One command installs everything.
+
+## Advanced / Manual Install
+
+```bash
 git clone https://github.com/98kiran/agenthq.git
 cd agenthq
 pip3 install -r requirements.txt --break-system-packages
@@ -36,7 +44,6 @@ npx pm2 start npm --name agenthq -- start
 ```
 
 Setup prints your login URL and generated password.
-
 
 ## Supabase Mode
 
@@ -80,7 +87,7 @@ If your OpenClaw agent has the `agenthq` skill, it can set this up for you:
 
 > "Install AgentHQ for me"
 
-The agent will clone the repo, install Python requirements, run setup, and start the dashboard.
+The agent will run the one-line installer for you.
 
 ## Optional: Gateway WebSocket (live agent status)
 
@@ -103,7 +110,7 @@ GATEWAY_ORIGIN=http://localhost:3000
 
 ## Architecture
 
-```
+```text
 AgentHQ (Next.js)
   |-- /api/agents    -> agent_config table
   |-- /api/tasks     -> tasks table

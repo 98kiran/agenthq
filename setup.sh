@@ -65,9 +65,9 @@ AUTH_PW=$(grep AUTH_PASSWORD .env.local | cut -d= -f2)
 
 # Set up observer cron (every 30s)
 echo "Setting up observer cron..."
-(crontab -l 2>/dev/null | grep -v "observer.py"; \
+(command -v crontab &>/dev/null && crontab -l 2>/dev/null | grep -v "observer.py"; \
   echo "* * * * * cd $AGENTHQ_DIR && python3 observer.py >> observer.log 2>&1"; \
-  echo "* * * * * sleep 30 && cd $AGENTHQ_DIR && python3 observer.py >> observer.log 2>&1") | crontab -
+  echo "* * * * * sleep 30 && cd $AGENTHQ_DIR && python3 observer.py >> observer.log 2>&1") | command -v crontab &>/dev/null && crontab -
 echo "Observer cron installed (every 30s)."
 
 # Set up dispatcher (Supabase mode only)
