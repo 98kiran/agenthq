@@ -65,6 +65,20 @@ AGENT_DISPLAY = {
     "main": "Nova",
 }
 
+# Recently dispatched task IDs tracked for this process to avoid duplicate
+# notifications during short polling windows. Entries expire automatically.
+_dispatched_task_ids: dict[str, float] = {}
+_DISPATCHED_CACHE_MAX_AGE = 300  # 5 minutes
+
+
+def _prune_dispatched_cache():
+    """Drop stale dispatched task IDs from the in-memory dedupe cache."""
+    cutoff = time.time() - _DISPATCHED_CACHE_MAX_AGE
+    stale_ids = [task_id for task_id, dispatched_at in _dispatched_task_ids.items() if dispatched_at < cutoff]
+    for task_id in stale_ids:
+        _dispatched_task_ids.pop(task_id, None)
+
+
 # ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -443,7 +457,7 @@ def run():
 
                 if task_id in in_progress_ids:
                     log.info(f"  Task {task_id}: already in-progress in database, skipping")
-                    _dispatched_task_ids.add(task_id)
+                    _dispatched_task_ids[task_id] = time.time()
                     continue
 
                 signature = (
@@ -463,7 +477,7 @@ def run():
                     continue
 
                 log.info(f"  Dispatching: [{project}] → {agent}")
-                _dispatched_task_ids.add(task_id)
+                _dispatched_task_ids[task_id] = time.time()
                 active_signatures.add(signature)
 
                 message = build_task_message(task)
@@ -486,6 +500,7 @@ def run():
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     })
                     log.warning(f"  Task {task_id}: notify failed, reverted to todo (retries={retry_count})")
+                    _dispatched_task_ids.pop(task_id, None)
                     active_signatures.discard(signature)
                     continue
 
